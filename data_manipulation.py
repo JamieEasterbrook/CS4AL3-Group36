@@ -49,3 +49,10 @@ merged_df.to_csv('data/merged_raw.csv', index=False)
 
 print(merged_df.sample(3))
 merged_df_sorted_filtered.to_csv('data/merged_filtered.csv', index=False)
+
+# TODO: Transform Year, Month, Date, Time, into features:
+    # dtHours: Delta time in hours since the last measurement, 0 for the first one
+    # sinTime: Local time transformed into a sinusoidal function (p=24)
+    # sinDay: Month and Day transformed into days 0-365 then into a sinusoidal function (p=365)
+    # year: Keep as it is
+merged_final = merged_df_sorted_filtered
