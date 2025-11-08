@@ -102,14 +102,39 @@
         "Smoke"
     ],
     "classes": {
-        "Cloudiness": [
-            {
+        "Clear": {
+            "Cloudiness": {
                 "min": 0.0,
                 "minInclusive": true,
                 "max": 0.05,
-                "maxInclusive": false,
-                "labels": ""
+                "maxInclusive": false
             }
-        ]
+        },
+        "Drizzle": {
+            "Precipitation": {
+                "min": 0.05,
+                "minInclusive": true,
+                "max": 0.10,
+                "maxInclusive": false
+            },
+            "Intensity": {
+                "min": 0.00,
+                "minInclusive": true,
+                "max": 0.50,
+                "maxInclusive": false
+            },
+            "Heat": {
+                "min": 0.60,
+                "minInclusive": true,
+                "max": 1.00,
+                "maxInclusive": true
+            },
+            "Cloudiness": {
+                "min": 0.10,
+                "minInclusive": true,
+                "max": 1.00,
+                "maxInclusive": true
+            }
+        }
     }
 }
