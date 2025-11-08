@@ -46,11 +46,10 @@ def get_next_point(year:int, month:int, day:int, hour:int) -> tuple[int,int,int,
 
 # returns X_train, X_val, y_train, y_val
 def load_data_and_preprocess(path:str, match:str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    df_list = []
-    for path in glob.glob(os.path.join(path, match)):
-        df_list.append(pd.read_csv(path))
+    print('Reading in pre-merged data')
+    merged_df = pd.read_csv('data/merged_raw.csv')
 
-    merged_df = pd.concat(df_list, ignore_index=True)
+    print('Removing invalid data')
     merged_df = merged_df.sort_values(by=['Year', 'Month', 'Day', 'Time (LST)'], ascending=True)
     merged_df = merged_df.dropna(
         subset=[
@@ -87,6 +86,7 @@ def load_data_and_preprocess(path:str, match:str) -> tuple[torch.Tensor, torch.T
         axis=1
     )
 
+    print('Transforming features')
     # TODO: Transform Year, Month, Date, Time, into features:
         # dtHours: Delta time in hours since the last measurement, 0 for the first one
         # sinTime: Local time transformed into a sinusoidal function (p=24)
@@ -96,6 +96,7 @@ def load_data_and_preprocess(path:str, match:str) -> tuple[torch.Tensor, torch.T
     merged_df['DateTime'] = pd.to_datetime(merged_df[['Year', 'Month', 'Day', 'Time (LST)']].agg('-'.join, axis=1))
     # TODO: Finish implementing
 
+    print('Extracting relevant data for features and targets')
     x = merged_df.drop(columns=['Weather', 'Year', 'Month', 'Day', 'Time (LST)', 'DateTime']).to_numpy(dtype=np.float32)
     y = merged_df['Weather']
     # Encode weather labels:
@@ -113,18 +114,18 @@ class RecurrentNeuralNetwork(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.initial_phase = nn.Sequential(
-            nn.Linear(16, 64),
+            nn.Linear(input_size, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(64, output_size),
+            nn.Sigmoid() if output_size == 1 else nn.Softmax(dim=1)
         )
 
     def forward(self, x: torch.Tensor):
         x = self.initial_phase(self.flatten(x))
-        out1 = 
-        return 
+        
+        return x
 
 # ###################################################### MAIN ######################################################
 
