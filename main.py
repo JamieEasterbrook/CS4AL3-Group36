@@ -39,36 +39,49 @@ class RecurrentNeuralNetwork(nn.Module):
             self.hidden_size,
             self.output_size
         )
-        self.act = []
-        for i in range(self.output_size):
-            self.act.append(nn.Sigmoid())
+        self.act = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor):
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.device)
         out, _ = self.rnn(x, h0)
         h_n = out[:, -1, :]
         out = self.fc(h_n)
-        predictions = []
-        for i in range(self.output_size):
-            predictions.append(self.act[i](out).item())
-        return torch.Tensor(predictions)
+        return self.act(out)
+
+class SequencedDataset(Dataset):
+    def __init__(self, X:torch.Tensor, y:torch.Tensor, seq_len: int):
+        self.X = X
+        self.y = y
+        self.seq_len = seq_len
+
+    def __len__(self):
+        return self.X.size(0) - self.seq_len
+    
+    def __getitem__(self, idx):
+        return self.X[idx:idx+self.seq_len], self.y[idx+self.seq_len]
+
 
 # ################################################## MAIN HELPERS ###################################################
 
-def calculate_validation_loss(model: nn.Module, X_val: torch.Tensor, y_val: torch.Tensor, criterion):
+def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion):
     model.eval()
-    with torch.no_grad():
-        pred: torch.Tensor = model(X_val.unsqueeze(0))
-        loss = criterion(pred, y_val)
-        model.train()
-    return loss.item()
+    total_loss = 0.0
+    val_loader = DataLoader(val, batch_size=BATCH_SIZE, shuffle=False)
 
-def load_data()->tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    with torch.no_grad():
+        for X_batch, y_batch in val_loader:
+            pred: torch.Tensor = model(X_batch)
+            loss = criterion(pred, y_batch)
+            total_loss += loss.item()
+        model.train()
+    return total_loss / len(val_loader)
+
+def load_data()->tuple[SequencedDataset, SequencedDataset]:
     df = pd.read_csv('processed_data/final.csv')
     X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy())
     y = torch.Tensor(df[TARGET_COLUMNS].to_numpy())
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
-    return X_train, X_val, y_train, y_val
+    return SequencedDataset(X_train, y_train, SEQUENCE_LENGTH), SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
 
 
 # ###################################################### MAIN ######################################################
@@ -79,7 +92,7 @@ DROPOUT_RATE = 0.0
 BATCH_SIZE = 16
 SEQUENCE_LENGTH = 30
 NUM_EPOCHS = 100
-CHECK_EVERY = 10
+CHECK_EVERY = 1
 
 # Configuration
 TARGET_COLUMNS = [
@@ -129,8 +142,9 @@ FEATURE_COLUMNS = [
 
 if __name__ == '__main__':
     print('loading data...')
-    X_train, X_val, y_train, y_val = load_data()
-    print(f"Training Data:\n\tX:\n\t\t{X_train}\n\ty:\n\t\t{y_train}")
+    train_dataset, val_dataset = load_data()
+    print(f"Training Data:\n\tX:\n\t{train_dataset.X}\n\ty:\n\t{train_dataset.y}")
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     
     print('instantiating model...')
     model = RecurrentNeuralNetwork(
@@ -143,14 +157,13 @@ if __name__ == '__main__':
 
     model.train()
     criterion = nn.BCELoss()
-
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     print('starting training...')
-    for epoch in range(NUM_EPOCHS):
-        for i in range(SEQUENCE_LENGTH, X_train.size(0), 1): # slide by 1 with a window of SEQUENCE_LENGTH elements
-            inputs = X_train[i-SEQUENCE_LENGTH:i].unsqueeze(0)
-            targets = y_train[i].unsqueeze(0)
+    iteration = 0
+    for X_batch, y_batch in train_loader:
+            inputs = X_batch
+            targets = y_batch
 
             optimizer.zero_grad()
             preds = model(inputs)
@@ -160,7 +173,13 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-        if (epoch+1) % CHECK_EVERY == 0:
-            print(f"Epoch {epoch+1}, Loss: {calculate_validation_loss(model, X_val, y_val, criterion)}")
+            if (iteration+1) % CHECK_EVERY == 0:
+                print(f"Iteration {iteration+1}, Loss: {calculate_validation_loss(model, val_dataset, criterion)}")
+            iteration += 1
+
+    print('training complete.')
 
 
+
+    model_state = model.state_dict()
+    torch.save(model_state, 'model/rnn_model.pt')
