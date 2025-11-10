@@ -1,0 +1,13 @@
+{
+  "[json]": {
+    "editor.defaultFormatter": null
+  },
+  "editor.formatOnSave": false,
+  "editor.defaultFormatter": null,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+  "notebook.defaultFormatter": null,
+  "notebook.formatOnCellExecution": false,
+  "notebook.formatOnSave.enabled": false,
+  "prettier.enable": false
+}
