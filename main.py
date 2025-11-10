@@ -89,10 +89,12 @@ def load_data()->tuple[SequencedDataset, SequencedDataset]:
 # Hyperparameters
 LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.0
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 SEQUENCE_LENGTH = 30
 NUM_EPOCHS = 100
 CHECK_EVERY = 1
+HIDDEN_SIZE = 42
+NUM_LAYERS = 2
 
 # Configuration
 TARGET_COLUMNS = [
@@ -149,8 +151,8 @@ if __name__ == '__main__':
     print('instantiating model...')
     model = RecurrentNeuralNetwork(
         input_size=len(FEATURE_COLUMNS),
-        hidden_size=42,
-        num_layers=2,
+        hidden_size=HIDDEN_SIZE,
+        num_layers=NUM_LAYERS,
         output_size=len(TARGET_COLUMNS),
         device=torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
     )
@@ -160,6 +162,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     print('starting training...')
+    print(f'Max number of iterations per epoch: {len(train_loader)}')
     iteration = 0
     for X_batch, y_batch in train_loader:
             inputs = X_batch
@@ -178,8 +181,6 @@ if __name__ == '__main__':
             iteration += 1
 
     print('training complete.')
-
-
 
     model_state = model.state_dict()
     torch.save(model_state, 'model/rnn_model.pt')
