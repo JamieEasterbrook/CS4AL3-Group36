@@ -128,9 +128,9 @@ def load_data()->tuple[SequencedDataset, SequencedDataset]:
 LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.0
 BATCH_SIZE = 32
-SEQUENCE_LENGTH = 30
+SEQUENCE_LENGTH = 90
 NUM_EPOCHS = 30
-HIDDEN_SIZE = 64
+HIDDEN_SIZE = 128
 NUM_LAYERS = 2
 
 # Evaluation
