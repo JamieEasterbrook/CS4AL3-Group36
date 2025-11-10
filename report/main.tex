@@ -6,6 +6,9 @@
 \usepackage{times}
 \usepackage{latexsym}
 
+% package to allow for more compact lists
+\usepackage{enumitem}
+
 % For proper rendering and hyphenation of words containing Latin characters (including in bib files)
 \usepackage[T1]{fontenc}
 % For Vietnamese characters
@@ -24,11 +27,11 @@
 %
 % and set <dim> to something 5cm or larger.
 
-\title{Group X Progress Report:\\My Group's Project Name}
+\title{Group 36 Progress Report:\\Recurrent Neural Network-Based Weather Prediction}
 
 
-\author{First Author, Second Author, Third Author \\
-  \texttt{\{macid1,macid2,macid3\}@mcmaster.ca} }
+\author{Jamie Easterbrook, Ahmed Rashrash, David Zhong \\
+  \texttt{\{easterbj,rashrasa,zhongx22\}@mcmaster.ca} }
 
 %\author{
 %  \textbf{First Author\textsuperscript{1}},
@@ -73,21 +76,50 @@
 % \begin{abstract}
 % \end{abstract}
 
-\section{Introduction}
+\section{Introduction} % DONE
 
-Here, write a brief introduction to the problem you are solving. This can be adapted from your problem description and motivation from the original proposal. This should be around 0.25-0.5 pages.
+Our challenge is to construct a model that will predict immediate short-term weather patterns around Toronto, given a large sample of past weather information. There has been a lot of recent development with AI-based weather models, and there is no shortage of large, open-source weather datasets to train models with, so we figured this would be an interesting project to tackle. Because of this boom in AI weather models, many newer ones have been performing significantly better than traditional physics-based models, in both accuracy and speed (\citet{rackow2024robustnessaibasedweatherforecasts}). Our approach to solving this problem is with a recurrent neural network, that can make use of the sequential structure of the data in order to leverage patterns in past weather conditions, allowing us to predict future short-term trends.
 
 \section{Related Work}
 
 Here, talk about the related work you encountered for your approach. Cite at least 5 references. Refer to item 2. No one has done exactly your task? Write about the most similar thing you can find. This should be around 0.25-0.5 pages.
 
-\section{Dataset}
+\section{Dataset} % DONE
 
-You should write about your dataset here, following the guidelines regarding item 1. This section may be 0.5-1 pages. Depending on your specific dataset, you may want to include subsections for the preprocessing, annotation, etc.
+Our dataset is a large sample of public domain weather data taken from the Government of Canada’s website through a provided Bash script. The dataset consists of measurements taken roughly every 3 hours, ranging from June 11$^{th}$, 2013, to September 26$^{th}$, 2025. The exact time between measurements is highly irregular, resulting in inconsistent amounts of labels on a day-to-day basis. Additionally, the table is full of null values, and many empty or extraneous columns, including two that were completely unlabelled.
 
-\section{Features}
+Due to the frequency and time range of recordings, our dataset has ~107,000 data points, which means we can afford to drop invalid or incomplete points.
 
-Describe any features you used for your model, or how your data was input to your model. Are you doing feature engineering or feature selection? Are you learning embeddings? Is it all part of one neural network? Refer to item 2. This may range from 0.25 pages to 0.5 pages.
+\subsection{Labels} % DONE
+
+The table is provided as a .csv file, with built-in labels for each point, classifying what weather conditions were currently unfolding at the given time. These labels are grouped together and treat different magnitudes of the same weather as different prefix labels, for example “Mostly Cloudy” and “Paritally Cloudy” are treated as separate cases. We want to combine these umbrella terms adding a discrete numeric method of indicating the scale of each weather event. This will allow us to add similar such labels back into the output during postprocessing.
+
+\subsection{Preprocessing} % DONE
+
+For our preprocessing, we removed missing or redundant values from the dataset. Since we only requested data from a station outside of Toronto’s Pearson International Airport, which means that all the location and station data columns are identical, so we can remove those. There was a large amount of mostly empty flag columns and the humidex was missing most of its values, we removed all of those features.
+
+For the date and time information, we want to parse it manually to work with our recurrent neural network. We added in a delta time column, recording the time in hours since the last measurement, and parsed the day and month integer values into sinusoidal functions.
+
+Lastly, we take our labels and split them into a list of each characteristic, then we group the labels into label classes, and convert the prefix labels into real valued magnitudes representing the scale of the labeled weather event. Finally we export the processed data into a separate file for later splitting into training and test sets.
+
+\section{Features} % DONE
+
+The features of our processed dataset include:
+\begin{itemize}[nosep]
+        \item Date Information (Day, Month and Year)
+        \item Time (LST)
+        \item Wind Speed (km/h)
+        \item Wind Direction (10s of degrees)
+        \item Air Pressure (kPa)
+        \item Visibility (km)
+        \item Relative Humidity (%)
+        \item Dew Point Temperature (^{\circ}C)
+        \item Precipitation Amount (mm)
+\end{itemize}
+
+Our input values contain all of this information, as we have filtered out any columns missing any values. These features were manually determined by human inspection of the dataset.
+
+We engineered the date and time features to have more readable numeric values to be more compatible with our recurrent neural network. We added in a delta time column, recording the time in hours since the last measurement, and parsed the day and month integer values into sinusoidal functions.
 
 \section{Implementation}
 
@@ -111,6 +143,8 @@ See Table~\ref{citation-guide} for an example of a table and its caption.
 See Figure~\ref{fig:experiments} for an example of a figure and its caption.
 
 
+% removed so the document parses
+\iffalse
 \begin{figure}[t]
   \includegraphics[width=\columnwidth]{example-image-golden}
   \caption{A figure with a caption that runs for more than one line.
@@ -119,12 +153,14 @@ See Figure~\ref{fig:experiments} for an example of a figure and its caption.
   \label{fig:experiments}
 \end{figure}
 
+
 \begin{figure*}[t]
   \includegraphics[width=0.48\linewidth]{example-image-a} \hfill
   \includegraphics[width=0.48\linewidth]{example-image-b}
   \caption {A minimal working example to demonstrate how to place
     two images side-by-side.}
 \end{figure*}
+\fi
 
 
 \subsection{Citations}
