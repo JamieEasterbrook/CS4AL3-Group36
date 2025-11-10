@@ -76,18 +76,43 @@ def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion
         model.train()
     return total_loss / len(val_loader)
 
-def calculate_accuracy(model: nn.Module, val: SequencedDataset) -> float:
+def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset) -> torch.Tensor:
     model.eval()
-    correct = 0
-    total = 0
-    val_loader = DataLoader(val, batch_size=1, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    preds = []
     with torch.no_grad():
-        for X_batch, y_batch in val_loader:
-            pred: torch.Tensor = model(X_batch)
-            predicted = (pred >= 0.5).float()
-            correct += (predicted == y_batch).sum().item()
-            total += y_batch.numel()
-    return correct / total
+        for X_batch, _ in val_loader:
+            preds.append(model(X_batch))
+
+    model.train()
+
+    return (torch.cat(preds) >= 0.5).float()
+
+# acc, recall, tpr
+def calculate_results(y_pred: torch.Tensor, y: torch.Tensor):
+    print(f'calculating accuracy, y_pred shape: {y_pred.size()}, y size: {y.size()}')
+    tp = ((y_pred==1) & (y==1)).sum().item()
+    tn = ((y_pred==0) & (y==0)).sum().item()
+    fp = ((y_pred==1) & (y==0)).sum().item()
+    fn = ((y_pred==0) & (y==1)).sum().item()
+    print(f'Counts: tp: {tp}, tn: {tn}, fp: {fp}, fn: {fn}')
+    total = y_pred.numel()
+    return (tp+tn/total if total else 0, tp/(tp+fn) if (tp+fn) else 0, tp/(tp+fp) if (tp+fp) else 0)
+
+def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
+    zeroed_y = torch.zeros(val.y.size())
+    zeroed_acc, zeroed_recall, zeroed_tpr = calculate_results(zeroed_y, val.y)
+    print(f'Accuracy on all zero predictions (baseline: majority vote): {zeroed_acc*100:.8f}%')
+    print(f'Recall on all zero predictions (baseline: majority vote): {zeroed_recall*100:.8f}%')
+    print(f'True positive rate on all zero predictions (baseline: majority vote): {zeroed_tpr*100:.8f}%')
+
+    print()
+
+    model_acc, model_recall, model_tpr = calculate_results(calculate_prediction(model, val), val.y[val.seq_len:])
+    print(f'Model accuracy: {model_acc*100:.8f}%')
+    print(f'Model recall: {model_recall*100:.8f}%')
+    print(f'Model true positive rate: {model_tpr*100:.8f}%')
+    
 
 def load_data()->tuple[SequencedDataset, SequencedDataset]:
     df = pd.read_csv('processed_data/final.csv')
@@ -104,8 +129,8 @@ LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.0
 BATCH_SIZE = 32
 SEQUENCE_LENGTH = 30
-NUM_EPOCHS = 1
-HIDDEN_SIZE = 16
+NUM_EPOCHS = 30
+HIDDEN_SIZE = 64
 NUM_LAYERS = 2
 
 # Evaluation
@@ -176,8 +201,7 @@ if __name__ == '__main__':
     )
     if EVALUATION_MODE:
         model.load_state_dict(torch.load('model/rnn_model.pt'))
-        accuracy = calculate_accuracy(model, val_dataset)
-        print(f'Model accuracy on validation set: {accuracy*100:.2f}%')
+        print_evaluation_metrics(model, val_dataset)
         quit(0)
 
     model.train()

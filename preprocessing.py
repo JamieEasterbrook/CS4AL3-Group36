@@ -101,14 +101,11 @@ def load_data_and_preprocess(path:str):
     merged_df['year'] = merged_df['Year']
 
     print('Extracting relevant data for features and targets')
-    merged_df = merged_df.drop(columns=['Year', 'Month', 'Day', 'Time (LST)', 'DateTime'])
     labels = merged_df['Weather'].apply(lambda x: [l.strip() for l in str(x).split(',')])
     label_list:list[str] = json.load(open('docs/labels.json', 'r'))['separated']
     label_list.sort()
     for label in label_list:
         merged_df[label] = labels.apply(lambda wordList: int(label in wordList))
-
-    merged_df = merged_df.drop(columns=['Weather'])
 
 
     # TODO: just use a vector of 1s and 0s for each label, forget about this complicated encoding
