@@ -76,6 +76,19 @@ def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion
         model.train()
     return total_loss / len(val_loader)
 
+def calculate_accuracy(model: nn.Module, val: SequencedDataset) -> float:
+    model.eval()
+    correct = 0
+    total = 0
+    val_loader = DataLoader(val, batch_size=1, shuffle=False)
+    with torch.no_grad():
+        for X_batch, y_batch in val_loader:
+            pred: torch.Tensor = model(X_batch)
+            predicted = (pred >= 0.5).float()
+            correct += (predicted == y_batch).sum().item()
+            total += y_batch.numel()
+    return correct / total
+
 def load_data()->tuple[SequencedDataset, SequencedDataset]:
     df = pd.read_csv('processed_data/final.csv')
     X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy())
@@ -91,12 +104,17 @@ LEARNING_RATE = 0.005
 DROPOUT_RATE = 0.0
 BATCH_SIZE = 32
 SEQUENCE_LENGTH = 30
-NUM_EPOCHS = 100
-CHECK_EVERY = 1
-HIDDEN_SIZE = 42
+NUM_EPOCHS = 1
+HIDDEN_SIZE = 16
 NUM_LAYERS = 2
 
+# Evaluation
+CHECK_EVERY = 1
+
 # Configuration
+EVALUATION_MODE = False
+
+# Constants
 TARGET_COLUMNS = [
         "Blowing Snow",
         "Clear",
@@ -156,29 +174,35 @@ if __name__ == '__main__':
         output_size=len(TARGET_COLUMNS),
         device=torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
     )
+    if EVALUATION_MODE:
+        model.load_state_dict(torch.load('model/rnn_model.pt'))
+        accuracy = calculate_accuracy(model, val_dataset)
+        print(f'Model accuracy on validation set: {accuracy*100:.2f}%')
+        quit(0)
 
     model.train()
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     print('starting training...')
-    print(f'Max number of iterations per epoch: {len(train_loader)}')
+    print(f'Max number of iterations: {len(train_loader) * NUM_EPOCHS}')
     iteration = 0
-    for X_batch, y_batch in train_loader:
-            inputs = X_batch
-            targets = y_batch
+    for epoch in range(NUM_EPOCHS):
+        for X_batch, y_batch in train_loader:
+                inputs = X_batch
+                targets = y_batch
 
-            optimizer.zero_grad()
-            preds = model(inputs)
+                optimizer.zero_grad()
+                preds = model(inputs)
 
-            loss = criterion(preds, targets)
+                loss = criterion(preds, targets)
 
-            loss.backward()
-            optimizer.step()
+                loss.backward()
+                optimizer.step()
 
-            if (iteration+1) % CHECK_EVERY == 0:
-                print(f"Iteration {iteration+1}, Loss: {calculate_validation_loss(model, val_dataset, criterion)}")
-            iteration += 1
+                if (iteration+1) % CHECK_EVERY == 0:
+                    print(f"Iteration {iteration+1}, Loss: {calculate_validation_loss(model, val_dataset, criterion)}")
+                iteration += 1
 
     print('training complete.')
 
