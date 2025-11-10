@@ -20,11 +20,11 @@
 
 ### 6. Wind
 
-### 7. Thunderstorms
+### 7. Pollution
 
-### 8. Smoke
+### 8. Thunderstorms
 
-### 9. Pollution
+### 9. Smoke
 
 ## Sections
 
