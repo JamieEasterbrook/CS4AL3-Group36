@@ -45,24 +45,15 @@ def get_next_point(year:int, month:int, day:int, hour:int) -> tuple[int,int,int,
                 return (year+1, 1, 1, (hour+3) % 24)
 
 # returns X_train, X_val, y_train, y_val
-def load_data_and_preprocess(path:str, match:str):
-    print('Reading in pre-merged data')
-    merged_df = pd.read_csv('data/merged_raw.csv')
+def load_data_and_preprocess(path:str):
+    print('Reading in raw csv files')
+    paths = glob.glob("*.csv", root_dir=path, recursive=True)
+    merged_df = pd.read_csv(os.path.join('weather/', paths[0]))
+    for p in paths[1:]:
+        merged_df = pd.concat([merged_df, pd.read_csv(os.path.join('weather/', p))], ignore_index=True)
 
     print('Removing invalid data')
     merged_df = merged_df.sort_values(by=['Year', 'Month', 'Day', 'Time (LST)'], ascending=True)
-    merged_df = merged_df.dropna(
-        subset=[
-            'Weather',
-            'Temp (°C)',
-            'Rel Hum (%)',
-            'Stn Press (kPa)',
-            'Visibility (km)',
-            'Wind Spd (km/h)',
-            'Dew Point Temp (°C)',
-            'Wind Dir (10s deg)'
-        ]
-    )
     merged_df = merged_df.drop(
         labels=[
             'Longitude (x)',
@@ -85,6 +76,8 @@ def load_data_and_preprocess(path:str, match:str):
         ],
         axis=1
     )
+    merged_df = merged_df.dropna(axis=1, how='all')
+    merged_df = merged_df.dropna(axis=0)
 
     print('Transforming features')
     # dtHours: Delta time in hours since the last measurement, 0 for the first one
@@ -109,9 +102,17 @@ def load_data_and_preprocess(path:str, match:str):
 
     print('Extracting relevant data for features and targets')
     merged_df = merged_df.drop(columns=['Year', 'Month', 'Day', 'Time (LST)', 'DateTime'])
-    labels: list[str] = merged_df['Weather'].split(',')
-    label_mapping = json.load(open('docs/labels.json', 'r'))['classes']
+    labels = merged_df['Weather'].apply(lambda x: [l.strip() for l in str(x).split(',')])
+    label_list:list[str] = json.load(open('docs/labels.json', 'r'))['separated']
+    label_list.sort()
+    for label in label_list:
+        merged_df[label] = labels.apply(lambda wordList: int(label in wordList))
 
+    merged_df = merged_df.drop(columns=['Weather'])
+
+
+    # TODO: just use a vector of 1s and 0s for each label, forget about this complicated encoding
+    
     # Encode weather labels:
         # Output Classes (see docs/labels.md):
             # Cloudiness        (Real, [0,1])
@@ -128,4 +129,4 @@ def load_data_and_preprocess(path:str, match:str):
     merged_df.to_csv('processed_data/final.csv', index=False)
 
 if __name__ == '__main__':
-    load_data_and_preprocess('weather', '*.csv')
+    load_data_and_preprocess('weather')
