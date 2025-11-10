@@ -18,7 +18,6 @@ class RecurrentNeuralNetwork(nn.Module):
             hidden_size: int,
             num_layers: int,
             output_size: int,
-            reg_cutoff_idx_inclusive: int,
             device: str
         ):
         super(RecurrentNeuralNetwork, self).__init__()
@@ -26,11 +25,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.output_size = output_size
-        self.reg_cutoff_idx_inclusive = reg_cutoff_idx_inclusive
         self.device = device
-
-        num_reg = reg_cutoff_idx_inclusive + 1
-        num_class = output_size - num_reg
 
         self.rnn = nn.RNN(
             self.input_size,
@@ -39,72 +34,39 @@ class RecurrentNeuralNetwork(nn.Module):
             batch_first=True,
             dropout=DROPOUT_RATE
         )
-        
-        self.fc_reg = nn.Linear(
-            self.hidden_size,
-            num_reg
-        ) if (num_reg > 0) else nn.Identity()
 
-        self.fc_class = nn.Linear(
+        self.fc = nn.Linear(
             self.hidden_size,
-            num_class
-        ) if (num_class > 0) else nn.Identity()
-
-        self.act_class = nn.Sigmoid()
-        
+            self.output_size
+        )
+        self.act = []
+        for i in range(self.output_size):
+            self.act.append(nn.Sigmoid())
 
     def forward(self, x: torch.Tensor):
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.device)
         out, _ = self.rnn(x, h0)
         h_n = out[:, -1, :]
-        out1 = self.fc_reg(h_n)
-
-        out2 = self.act_class(self.fc_class(h_n))
-
-        return out1, out2
+        out = self.fc(h_n)
+        predictions = []
+        for i in range(self.output_size):
+            predictions.append(self.act[i](out).item())
+        return torch.Tensor(predictions)
 
 # ################################################## MAIN HELPERS ###################################################
 
-def calculate_validation_loss(model: nn.Module, X_val: torch.Tensor, y_val: torch.Tensor, criterion_reg, criterion_class):
+def calculate_validation_loss(model: nn.Module, X_val: torch.Tensor, y_val: torch.Tensor, criterion):
     model.eval()
     with torch.no_grad():
-        pred = model(X_val.unsqueeze(0))
-        pred_reg, pred_class = pred[:REG_CUTOFF_IDX_INCLUSIVE+1], pred[REG_CUTOFF_IDX_INCLUSIVE+1:]
-        targets_reg, targets_class = y_val[:REG_CUTOFF_IDX_INCLUSIVE+1], y_val[REG_CUTOFF_IDX_INCLUSIVE+1:]
-        loss = criterion_reg(pred_reg, targets_reg) + criterion_class(pred_class, targets_class)
+        pred: torch.Tensor = model(X_val.unsqueeze(0))
+        loss = criterion(pred, y_val)
         model.train()
     return loss.item()
 
 def load_data()->tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    target_columns = [
-        'Cloudiness',
-        'Precipitation',
-        'Intensity'
-        'Heat'
-        'Visibility'
-        'Wind'
-        'Pollution'
-        'Thunderstorms'
-        'Smoke'
-    ]
-
-    feature_columns = [
-        'Temp (°C)',
-        'Dew Point Temp (°C)',
-        'Rel Hum (%)',
-        'Wind Dir (10s deg)',
-        'Wind Spd (km/h)',
-        'Visibility (km)',
-        'Stn Press (kPa)',
-        'Wind Chill',
-        'dtHours',
-        'sinTime',
-        'sinDay',
-        'year'
-    ]
     df = pd.read_csv('processed_data/final.csv')
-    X = torch.Tensor(df[feature_columns].to_numpy())
-    y = torch.Tensor(df[target_columns].to_numpy())
+    X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy())
+    y = torch.Tensor(df[TARGET_COLUMNS].to_numpy())
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
     return X_train, X_val, y_train, y_val
 
@@ -120,46 +82,85 @@ NUM_EPOCHS = 100
 CHECK_EVERY = 10
 
 # Configuration
-REG_CUTOFF_IDX_INCLUSIVE = 6
+TARGET_COLUMNS = [
+        "Blowing Snow",
+        "Clear",
+        "Cloudy",
+        "Drizzle",
+        "Fog",
+        "Freezing Drizzle",
+        "Freezing Fog",
+        "Freezing Rain",
+        "Haze",
+        "Heavy Rain",
+        "Heavy Rain Showers",
+        "Heavy Snow",
+        "Ice Pellets",
+        "Mainly Clear",
+        "Moderate Hail",
+        "Moderate Rain",
+        "Moderate Rain Showers",
+        "Moderate Snow",
+        "Mostly Cloudy",
+        "Rain",
+        "Rain Showers",
+        "Smoke",
+        "Snow",
+        "Snow Grains",
+        "Snow Pellets",
+        "Snow Showers",
+        "Thunderstorms"
+    ]
 
+FEATURE_COLUMNS = [
+        "Temp (°C)",
+        "Dew Point Temp (°C)",
+        "Rel Hum (%)",
+        "Wind Dir (10s deg)",
+        "Wind Spd (km/h)",
+        "Visibility (km)",
+        "Stn Press (kPa)",
+        "Wind Chill",
+        "dtHours",
+        "sinTime",
+        "sinDay",
+        "year",
+    ]
 
 if __name__ == '__main__':
+    print('loading data...')
     X_train, X_val, y_train, y_val = load_data()
+    print(f"Training Data:\n\tX:\n\t\t{X_train}\n\ty:\n\t\t{y_train}")
     
+    print('instantiating model...')
     model = RecurrentNeuralNetwork(
-        input_size=12,
+        input_size=len(FEATURE_COLUMNS),
         hidden_size=42,
         num_layers=2,
-        output_size=9,
-        reg_cutoff_idx_inclusive=REG_CUTOFF_IDX_INCLUSIVE,
+        output_size=len(TARGET_COLUMNS),
         device=torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
     )
 
     model.train()
-    criterion_reg = nn.MSELoss()
-    criterion_class = nn.BCELoss()
+    criterion = nn.BCELoss()
 
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
+    
+    print('starting training...')
     for epoch in range(NUM_EPOCHS):
         for i in range(SEQUENCE_LENGTH, X_train.size(0), 1): # slide by 1 with a window of SEQUENCE_LENGTH elements
             inputs = X_train[i-SEQUENCE_LENGTH:i].unsqueeze(0)
             targets = y_train[i].unsqueeze(0)
 
             optimizer.zero_grad()
-            pred_reg, pred_class = model(inputs)
+            preds = model(inputs)
 
-            targets_reg = targets[:, :REG_CUTOFF_IDX_INCLUSIVE+1]
-            targets_class = targets[:, REG_CUTOFF_IDX_INCLUSIVE+1:]
+            loss = criterion(preds, targets)
 
-            loss_reg = criterion_reg(pred_reg, targets_reg)
-            loss_class = criterion_class(pred_class, targets_class)
-
-            loss = loss_reg + loss_class
             loss.backward()
             optimizer.step()
 
         if (epoch+1) % CHECK_EVERY == 0:
-            print(f"Epoch {epoch+1}, Loss: {calculate_validation_loss(model, X_val, y_val, criterion_reg, criterion_class)}")
+            print(f"Epoch {epoch+1}, Loss: {calculate_validation_loss(model, X_val, y_val, criterion)}")
 
 
