@@ -148,10 +148,10 @@ PATIENCE = 20
 THRESHOLD = 0.01
 
 # Configuration
-EVALUATION_MODE = False
+EVALUATION_MODE = True
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
-MODEL_PATH = 'model/rnn_model_without_new_features.pt'
+MODEL_PATH = 'model/rnn_model.pt'
 
 # Constants
 TARGET_COLUMNS = [
@@ -193,10 +193,10 @@ FEATURE_COLUMNS = [
         "Visibility (km)",
         "Stn Press (kPa)",
         "Wind Chill",
-        #"dtHours",
-        #"sinTime",
-        #"sinDay",
-        #"year",
+        "dtHours",
+        "sinTime",
+        "sinDay",
+        "year",
     ]
 
 if __name__ == '__main__':
