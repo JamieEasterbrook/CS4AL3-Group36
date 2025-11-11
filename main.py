@@ -204,10 +204,17 @@ if __name__ == '__main__':
     print('loading data...')
     df = pd.read_csv('processed_data/final.csv')
     scalar = StandardScaler()
-    df[FEATURE_COLUMNS] = scalar.fit_transform(df[FEATURE_COLUMNS])
-    X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy()).to(DEVICE)
-    y = torch.Tensor(df[TARGET_COLUMNS].to_numpy()).to(DEVICE)
+    X = df[FEATURE_COLUMNS].to_numpy()
+    y = df[TARGET_COLUMNS].to_numpy()
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
+    X_train = scalar.fit_transform(X_train)
+    X_val = scalar.transform(X_val)
+
+    X_train = torch.Tensor(X_train).to(DEVICE)
+    X_val = torch.Tensor(X_val).to(DEVICE)
+    y_train = torch.Tensor(y_train).to(DEVICE)
+    y_val = torch.Tensor(y_val).to(DEVICE)
+
     train_dataset, val_dataset = SequencedDataset(X_train, y_train, SEQUENCE_LENGTH), SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
 
     print(f"Training Data:\n\tX:\n\t{train_dataset.X}\n\ty:\n\t{train_dataset.y}")
