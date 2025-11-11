@@ -112,7 +112,7 @@ NUM_LAYERS = 2
 CHECK_EVERY = 1
 
 # Configuration
-EVALUATION_MODE = False
+EVALUATION_MODE = True
 
 # Constants
 TARGET_COLUMNS = [
@@ -174,10 +174,19 @@ if __name__ == '__main__':
         output_size=len(TARGET_COLUMNS),
         device=torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
     )
+
     if EVALUATION_MODE:
-        model.load_state_dict(torch.load('model/rnn_model.pt'))
-        accuracy = calculate_accuracy(model, val_dataset)
-        print(f'Model accuracy on validation set: {accuracy*100:.2f}%')
+        #model.load_state_dict(torch.load('model/rnn_model.pt'))
+        #accuracy = calculate_accuracy(model, val_dataset)
+        #print(f'Model accuracy on validation set: {accuracy*100:.2f}%')
+
+        model.eval()
+        from RMSE import RMS_val
+        x_val = [row[0] for row in val_dataset]
+        y_val = [row[1] for row in val_dataset]
+        with torch.no_grad():
+            RMS_val(model,x_val,y_val,test_size = 0.5, feedback = True)
+
         quit(0)
 
     model.train()
