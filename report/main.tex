@@ -20,6 +20,7 @@
 \usepackage{microtype}
 \usepackage{inconsolata}
 \usepackage{graphicx}
+\usepackage{enumitem}
 
 % If the title and author information does not fit in the area allocated, uncomment the following
 %
@@ -78,11 +79,15 @@
 
 \section{Introduction} % DONE
 
-Our challenge is to construct a model that will predict immediate short-term weather patterns around Toronto, given a large sample of past weather information. There has been a lot of recent development with AI-based weather models, and there is no shortage of large, open-source weather datasets to train models with, so we figured this would be an interesting project to tackle. Because of this boom in AI weather models, many newer ones have been performing significantly better than traditional physics-based models, in both accuracy and speed (\citet{rackow2024robustnessaibasedweatherforecasts}). Our approach to solving this problem is with a recurrent neural network, that can make use of the sequential structure of the data in order to leverage patterns in past weather conditions, allowing us to predict future short-term trends.
+Our challenge is to construct a model that will predict immediate short-term weather patterns around Toronto, given a large sample of past weather information. There has been a lot of recent development with AI-based weather models, and there is no shortage of large, open-source weather datasets to train models with, so we figured this would be an interesting project to tackle. Because of this boom in AI weather models, many newer ones have been performing significantly better than traditional physics-based models, in both accuracy and speed \citep{rackow2024robustnessaibasedweatherforecasts}. Our approach to solving this problem is with a recurrent neural network, that can make use of the sequential structure of the data in order to leverage patterns in past weather conditions, allowing us to predict future short-term trends.
+
+Many aspects of weather prediction are heavily time-based so we will try to capture both with our recurrent network. A good example of this is that when close to a large lake, we can predict that the chance of rain will increase after a period of high temperatures due to Lake-Effect precipitation \citep{LakeEffectRainEvents}. Since data-driven models can capture patterns like this without needing the background reasoning of why or how it happens, it follows that they are overtaking physics based-models with recent developments \citep{rackow2024robustnessaibasedweatherforecasts}, so we will compare our algorithm to physics-based models in order to properly judge its efficacy.
 
 \section{Related Work}
 
-Here, talk about the related work you encountered for your approach. Cite at least 5 references. Refer to item 2. No one has done exactly your task? Write about the most similar thing you can find. This should be around 0.25-0.5 pages.
+One project we discovered involved generating accurate predictive data for several weather metrics \citep{HAN2021107601}. This project was a neural network-based predictive algorithm, with several iterative versions of this model. The project experimented with comparing feed-forward neural networks to recurrent networks, eventually implementing gated recurrent unit to help with the vanishing gradient problem. The algorithms each took sequential weather data and compiled it into a model to predict future trends of those data points, in order to make clean, more consistent synthetic data for other models to draw on.
+
+Another project we looked into was a recurrent neural network weather prediction task that would classify images based on non-exclusive weather states \citep{zhao2019cnnrnnarchitecturemultilabelweather}. They used self-annotated data, and their model would return a list of probabilities that each state was occurring. This algorithm initially was based on a single variable classifier, but the paper quickly concludes that a non-exclusive multi-class algorithm is the most efficient and accurate way to label outputs. This makes sense, as often a lot of weather conditions overlap, so reducing to just ‘wind’ or ‘rain’ is reductive, and can cause loss of information.
 
 \section{Dataset} % DONE
 
@@ -90,11 +95,11 @@ Our dataset is a large sample of public domain weather data taken from the Gover
 
 Due to the frequency and time range of recordings, our dataset has ~107,000 data points, which means we can afford to drop invalid or incomplete points.
 
-\subsection{Labels} % DONE
+\subsection{Labels}
 
-The table is provided as a .csv file, with built-in labels for each point, classifying what weather conditions were currently unfolding at the given time. These labels are grouped together and treat different magnitudes of the same weather as different prefix labels, for example “Mostly Cloudy” and “Paritally Cloudy” are treated as separate cases. We want to combine these umbrella terms adding a discrete numeric method of indicating the scale of each weather event. This will allow us to add similar such labels back into the output during postprocessing.
+The table is provided as a .csv file, with built-in labels for each point, classifying what weather conditions were currently unfolding at the given time. These labels are grouped together and treat different magnitudes of the same weather as different prefix labels, for example “Mostly Cloudy” and “Paritally Cloudy” are treated as separate cases. We want to combine these umbrella terms by adding a discrete numeric method of indicating the scale of each weather event. This will allow us to add similar such labels back into the output during postprocessing.
 
-\subsection{Preprocessing} % DONE
+\subsection{Preprocessing}
 
 For our preprocessing, we removed missing or redundant values from the dataset. Since we only requested data from a station outside of Toronto’s Pearson International Airport, which means that all the location and station data columns are identical, so we can remove those. There was a large amount of mostly empty flag columns and the humidex was missing most of its values, we removed all of those features.
 
@@ -113,7 +118,7 @@ The features of our processed dataset include:
         \item Air Pressure (kPa)
         \item Visibility (km)
         \item Relative Humidity (%)
-        \item Dew Point Temperature (^{\circ}C)
+        \item Dew Point Temperature ($^{\circ}C$)
         \item Precipitation Amount (mm)
 \end{itemize}
 
@@ -217,6 +222,8 @@ Write in this section a few sentences describing the contributions of each team 
 
 % Bibliography entries for the entire Anthology, followed by custom entries
 %\bibliography{custom,anthology-overleaf-1,anthology-overleaf-2}
+
+\bibliographystyle{plain}
 
 % Custom bibliography entries only
 \bibliography{custom}
