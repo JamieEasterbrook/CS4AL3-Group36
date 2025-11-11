@@ -6,7 +6,9 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader
 
 # ###################################################### MODEL ######################################################
@@ -39,7 +41,7 @@ class RecurrentNeuralNetwork(nn.Module):
             self.hidden_size,
             self.output_size
         )
-        self.act = nn.Sigmoid()
+        self.act = nn.Identity()
 
     def forward(self, x: torch.Tensor):
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.device)
@@ -70,8 +72,8 @@ def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion
 
     with torch.no_grad():
         for X_batch, y_batch in val_loader:
-            pred: torch.Tensor = model(X_batch)
-            loss = criterion(pred, y_batch)
+            pred: torch.Tensor = model(X_batch.to(DEVICE))
+            loss = criterion(pred, y_batch.to(DEVICE))
             total_loss += loss.item()
         model.train()
     return total_loss / len(val_loader)
@@ -82,7 +84,7 @@ def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset) -> tor
     preds = []
     with torch.no_grad():
         for X_batch, _ in val_loader:
-            preds.append(model(X_batch))
+            preds.append(torch.sigmoid(model(X_batch.to(DEVICE)))) # manually apply sigmoid since loss function does it now, loss isnt calculated here
 
     model.train()
 
@@ -97,47 +99,59 @@ def calculate_results(y_pred: torch.Tensor, y: torch.Tensor):
     fn = ((y_pred==0) & (y==1)).sum().item()
     print(f'Counts: tp: {tp}, tn: {tn}, fp: {fp}, fn: {fn}')
     total = y_pred.numel()
-    return (tp+tn/total if total else 0, tp/(tp+fn) if (tp+fn) else 0, tp/(tp+fp) if (tp+fp) else 0)
+    return (
+        (tp+tn)/total if total else 0,
+        tp/(tp+fn) if (tp+fn) else 0,
+        tp/(tp+fp) if (tp+fp) else 0
+    )
 
 def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
-    zeroed_y = torch.zeros(val.y.size())
-    zeroed_acc, zeroed_recall, zeroed_tpr = calculate_results(zeroed_y, val.y)
-    print(f'Accuracy on all zero predictions (baseline: majority vote): {zeroed_acc*100:.8f}%')
-    print(f'Recall on all zero predictions (baseline: majority vote): {zeroed_recall*100:.8f}%')
-    print(f'True positive rate on all zero predictions (baseline: majority vote): {zeroed_tpr*100:.8f}%')
+    zeroed_y = torch.zeros(val.y.size()).to(DEVICE)
+    zeroed_acc, zeroed_recall, zeroed_prec = calculate_results(zeroed_y[val.seq_len:], val.y[val.seq_len:])
+    print(f'Baseline: Accuracy on all zero predictions: {zeroed_acc*100:.8f}%')
+    print(f'Baseline: Recall on all zero predictions: {zeroed_recall*100:.8f}%')
+    print(f'Baseline: Precision on all zero predictions: {zeroed_prec*100:.8f}%')
 
     print()
 
-    model_acc, model_recall, model_tpr = calculate_results(calculate_prediction(model, val), val.y[val.seq_len:])
+    ones_y = torch.ones(val.y.size()).to(DEVICE)
+    ones_acc, ones_recall, ones_prec = calculate_results(ones_y[val.seq_len:], val.y[val.seq_len:])
+    print(f'Baseline: Accuracy on all zero predictions: {ones_acc*100:.8f}%')
+    print(f'Baseline: Recall on all zero predictions: {ones_recall*100:.8f}%')
+    print(f'Baseline: Precision on all zero predictions: {ones_prec*100:.8f}%')
+
+    print()
+
+    model_acc, model_recall,model_prec = calculate_results(calculate_prediction(model, val), val.y[val.seq_len:])
     print(f'Model accuracy: {model_acc*100:.8f}%')
     print(f'Model recall: {model_recall*100:.8f}%')
-    print(f'Model true positive rate: {model_tpr*100:.8f}%')
+    print(f'Model precision: {model_prec*100:.8f}%')
     
-
-def load_data()->tuple[SequencedDataset, SequencedDataset]:
-    df = pd.read_csv('processed_data/final.csv')
-    X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy())
-    y = torch.Tensor(df[TARGET_COLUMNS].to_numpy())
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
-    return SequencedDataset(X_train, y_train, SEQUENCE_LENGTH), SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
 
 
 # ###################################################### MAIN ######################################################
 
 # Hyperparameters
-LEARNING_RATE = 0.005
-DROPOUT_RATE = 0.0
+## Train
+LEARNING_RATE = 0.0001
 BATCH_SIZE = 32
-SEQUENCE_LENGTH = 90
-NUM_EPOCHS = 30
-HIDDEN_SIZE = 128
+SEQUENCE_LENGTH = 300
+NUM_EPOCHS = 9001
+HIDDEN_SIZE = 256
 NUM_LAYERS = 2
+## Regularize
+DROPOUT_RATE = 0.3
+L2_LAMBDA = 1e-03
 
-# Evaluation
-CHECK_EVERY = 1
+## Early Stop
+PATIENCE = 20
+THRESHOLD = 0.01
 
 # Configuration
-EVALUATION_MODE = False
+EVALUATION_MODE = True
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
+MODEL_PATH = 'model/rnn_model.pt'
 
 # Constants
 TARGET_COLUMNS = [
@@ -186,49 +200,72 @@ FEATURE_COLUMNS = [
     ]
 
 if __name__ == '__main__':
+    print(torch.cuda.get_device_name())
     print('loading data...')
-    train_dataset, val_dataset = load_data()
+    df = pd.read_csv('processed_data/final.csv')
+    scalar = StandardScaler()
+    df[FEATURE_COLUMNS] = scalar.fit_transform(df[FEATURE_COLUMNS])
+    X = torch.Tensor(df[FEATURE_COLUMNS].to_numpy()).to(DEVICE)
+    y = torch.Tensor(df[TARGET_COLUMNS].to_numpy()).to(DEVICE)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
+    train_dataset, val_dataset = SequencedDataset(X_train, y_train, SEQUENCE_LENGTH), SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
+
     print(f"Training Data:\n\tX:\n\t{train_dataset.X}\n\ty:\n\t{train_dataset.y}")
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     
     print('instantiating model...')
+    
     model = RecurrentNeuralNetwork(
         input_size=len(FEATURE_COLUMNS),
         hidden_size=HIDDEN_SIZE,
         num_layers=NUM_LAYERS,
         output_size=len(TARGET_COLUMNS),
-        device=torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
-    )
+        device=DEVICE
+    ).to(DEVICE)
     if EVALUATION_MODE:
-        model.load_state_dict(torch.load('model/rnn_model.pt'))
+        model.load_state_dict(torch.load(MODEL_PATH))
+        model = model.to(DEVICE)
         print_evaluation_metrics(model, val_dataset)
         quit(0)
 
     model.train()
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    pos_weight = (y_train.size(0)) / (y_train.sum(dim=0) + 1e-6) # prefers positive predictions, should be inversely proportional to how rare the class is
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(pos_weight)).to(DEVICE) 
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_LAMBDA)
     
     print('starting training...')
     print(f'Max number of iterations: {len(train_loader) * NUM_EPOCHS}')
     iteration = 0
+    best_loss = float('inf')
+    best_model_state = None
+    num_no_improve = 0
     for epoch in range(NUM_EPOCHS):
         for X_batch, y_batch in train_loader:
-                inputs = X_batch
-                targets = y_batch
+            inputs = X_batch.to(DEVICE)
+            targets = y_batch.to(DEVICE)
 
-                optimizer.zero_grad()
-                preds = model(inputs)
+            optimizer.zero_grad()
+            preds = model(inputs)
 
-                loss = criterion(preds, targets)
+            loss = criterion(preds, targets)
+            loss.backward()
+            optimizer.step()
 
-                loss.backward()
-                optimizer.step()
+            iteration += 1
 
-                if (iteration+1) % CHECK_EVERY == 0:
-                    print(f"Iteration {iteration+1}, Loss: {calculate_validation_loss(model, val_dataset, criterion)}")
-                iteration += 1
+        current_loss = calculate_validation_loss(model, val_dataset, criterion)
+        if current_loss - best_loss >= THRESHOLD:
+            num_no_improve += 1
+            if num_no_improve >= PATIENCE:
+                break
+        else:
+            num_no_improve = 0
+            if best_loss > current_loss:
+                best_loss = current_loss
+                best_model_state = copy.deepcopy(model.state_dict())
+        print(f"Iteration {iteration}, Loss: {current_loss}, No Improvement Count: {num_no_improve}")
+            
 
-    print('training complete.')
+    print(f'training complete {'due to early stop' if num_no_improve >= PATIENCE else ''}')
 
-    model_state = model.state_dict()
-    torch.save(model_state, 'model/rnn_model.pt')
+    torch.save(best_model_state, MODEL_PATH)
