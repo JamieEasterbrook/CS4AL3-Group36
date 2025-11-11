@@ -148,10 +148,10 @@ PATIENCE = 20
 THRESHOLD = 0.01
 
 # Configuration
-EVALUATION_MODE = True
+EVALUATION_MODE = False
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
-MODEL_PATH = 'model/rnn_model.pt'
+MODEL_PATH = 'model/rnn_model_without_new_features.pt'
 
 # Constants
 TARGET_COLUMNS = [
@@ -193,14 +193,14 @@ FEATURE_COLUMNS = [
         "Visibility (km)",
         "Stn Press (kPa)",
         "Wind Chill",
-        "dtHours",
-        "sinTime",
-        "sinDay",
-        "year",
+        #"dtHours",
+        #"sinTime",
+        #"sinDay",
+        #"year",
     ]
 
 if __name__ == '__main__':
-    print(torch.cuda.get_device_name())
+    print(torch.cuda.get_device_name() if torch.cuda.is_available() else 'No device available, using cpu')
     print('loading data...')
     df = pd.read_csv('processed_data/final.csv')
     scalar = StandardScaler()
