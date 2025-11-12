@@ -247,7 +247,7 @@ if __name__ == '__main__':
         device=DEVICE
     ).to(DEVICE)
     if EVALUATION_MODE:
-        model.load_state_dict(torch.load(MODEL_PATH))
+        model.load_state_dict(torch.load(MODEL_PATH,map_location=torch.device(DEVICE)))
         model = model.to(DEVICE)
         print_evaluation_metrics(model, val_dataset)
         quit(0)
