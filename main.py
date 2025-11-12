@@ -260,12 +260,12 @@ if __name__ == '__main__':
 
         model.eval()
 
-        from Error_Analysis import RMS_val, label_prediction
+        from Error_Analysis import RMS_val
 
         x_val = [row[0] for row in val_dataset]
         y_val = [row[1] for row in val_dataset]
-        #with torch.no_grad():
-            #RMS_val(model, x_val, y_val,TARGET_COLUMNS, feedback=True)
+        with torch.no_grad():
+            RMS_val(model, x_val, y_val,TARGET_COLUMNS, feedback=True)
 
         quit(0)
 
