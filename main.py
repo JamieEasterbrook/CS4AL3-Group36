@@ -20,7 +20,7 @@ class RecurrentNeuralNetwork(nn.Module):
             hidden_size: int,
             num_layers: int,
             output_size: int,
-            device: str
+            device
         ):
         super(RecurrentNeuralNetwork, self).__init__()
         self.input_size = input_size
@@ -200,7 +200,6 @@ FEATURE_COLUMNS = [
     ]
 
 if __name__ == '__main__':
-    print(torch.cuda.get_device_name())
     print('loading data...')
     df = pd.read_csv('processed_data/final.csv')
     scalar = StandardScaler()
