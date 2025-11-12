@@ -111,14 +111,31 @@ def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
     print(f'Baseline: Accuracy on all zero predictions: {zeroed_acc*100:.8f}%')
     print(f'Baseline: Recall on all zero predictions: {zeroed_recall*100:.8f}%')
     print(f'Baseline: Precision on all zero predictions: {zeroed_prec*100:.8f}%')
+    print(f'Baseline: F1 score on all one predictions: {2 * (zeroed_prec * zeroed_recall) / (zeroed_prec + zeroed_recall + 1e-4) :.8f}')
 
     print()
 
     ones_y = torch.ones(val.y.size()).to(DEVICE)
     ones_acc, ones_recall, ones_prec = calculate_results(ones_y[val.seq_len:], val.y[val.seq_len:])
-    print(f'Baseline: Accuracy on all zero predictions: {ones_acc*100:.8f}%')
-    print(f'Baseline: Recall on all zero predictions: {ones_recall*100:.8f}%')
-    print(f'Baseline: Precision on all zero predictions: {ones_prec*100:.8f}%')
+    print(f'Baseline: Accuracy on all one predictions: {ones_acc*100:.8f}%')
+    print(f'Baseline: Recall on all one predictions: {ones_recall*100:.8f}%')
+    print(f'Baseline: Precision on all one predictions: {ones_prec*100:.8f}%')
+    print(f'Baseline: F1 score on all one predictions: {2 * (ones_prec*ones_recall)/(ones_prec+ones_recall + 1e-4) :.8f}')
+
+    print()
+
+    flattened = [tuple(t.flatten().tolist()) for t in val.y]
+    from collections import Counter
+    most_common_flat = Counter(flattened).most_common(1)[0][0]
+    most_common_tensor = torch.tensor(most_common_flat).reshape(val.y[0].shape)
+    mcv = [most_common_tensor.clone() for _ in range(len(val.y))]
+    mcv = torch.stack(mcv).to(DEVICE)
+    mcv_acc, mcv_recall, mcv_prec = calculate_results(mcv[val.seq_len:], val.y[val.seq_len:])
+    print(mcv[0])
+    print(f'Baseline: Accuracy on most common vote predictions: {mcv_acc * 100:.8f}%')
+    print(f'Baseline: Recall on most common vote predictions: {mcv_recall * 100:.8f}%')
+    print(f'Baseline: Precision on most common vote predictions: {mcv_prec * 100:.8f}%')
+    print(f'Baseline: F1 score on most common vote predictions: {2 * (mcv_prec * mcv_recall) / (mcv_prec + mcv_recall + 1e-4) :.8f}')
 
     print()
 
@@ -126,6 +143,7 @@ def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
     print(f'Model accuracy: {model_acc*100:.8f}%')
     print(f'Model recall: {model_recall*100:.8f}%')
     print(f'Model precision: {model_prec*100:.8f}%')
+    print(f'Model F1 score: {2 * (model_prec*model_recall)/(model_prec+model_recall + 1e-4) :.8f} ')
     
 
 
