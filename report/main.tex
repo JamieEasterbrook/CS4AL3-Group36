@@ -79,42 +79,41 @@
 
 \section{Introduction} % DONE
 
-Our challenge is to construct a model that will predict immediate short-term weather patterns around Toronto, given a large sample of past weather information. There has been a lot of recent development with AI-based weather models, and there is no shortage of large, open-source weather datasets to train models with, so we figured this would be an interesting project to tackle. Because of this boom in AI weather models, many newer ones have been performing significantly better than traditional physics-based models, in both accuracy and speed \citep{rackow2024robustnessaibasedweatherforecasts}. Our approach to solving this problem is with a recurrent neural network (RNN), that can make use of the sequential structure of the data in order to leverage patterns in past weather conditions, allowing us to predict future short-term trends.
+Our challenge is to construct a model that will predict immediate short-term weather labels around Toronto, given a large sample of past weather information. There has been a lot of recent development with AI-based weather models, and there is no shortage of large, open-source weather datasets to train models with. Because of the boom in AI models across various fields, including weather prediction, and many developments later, newer ones have been performing significantly better than traditional weather prediction methods, such as physics-based models, in both accuracy and speed \citep{rackow2024robustnessaibasedweatherforecasts}. Our approach to solving this problem is with a recurrent neural network (RNN), which can make use of the sequential nature of weather patterns.
 
-Many aspects of weather prediction are heavily time-based so we will try to capture both with our RNN. A good example of this is that when close to a large lake, we can predict that the chance of rain will increase after a period of high temperatures due to Lake-Effect precipitation \citep{LakeEffectRainEvents}. Since data-driven models can capture patterns like this without needing the background reasoning of why or how it happens, it follows that they are overtaking physics based-models with recent developments \citep{rackow2024robustnessaibasedweatherforecasts}, so we will compare our algorithm to physics-based models in order to properly judge its efficacy.
+Many aspects of weather prediction are heavily time-based so a good model would be able to capture such patterns. A good example of this is that when close to a large lake, the chance of rain increases after a period of high temperatures due to Lake-Effect precipitation \citep{LakeEffectRainEvents}. Since purely data-driven models can capture patterns like this without needing the background reasoning of why or how it happens, it follows that they are overtaking physics based-models with recent developments \citep{rackow2024robustnessaibasedweatherforecasts}. Since physics-based models are mature and have been in use for a very long time, they will function as a baseline.
 
 \section{Related Work} % MOSTLY DONE
 
-One project we discovered involved generating accurate predictive data for several weather metrics \citep{HAN2021107601}. This project was a neural network-based predictive algorithm, with several iterative versions of this model. The project experimented with comparing feed-forward neural networks (FNNs) to recurrent networks, eventually implementing a gated recurrent unit to help with the vanishing gradient problem. The algorithms each took sequential weather data and compiled it into a model to predict future trends of those data points, in order to make clean, more consistent synthetic data for other models to draw on.
+One project we discovered involved generating accurate predictive data for several weather metrics \citep{HAN2021107601}. This project was a neural network-based predictive algorithm, with several iterations of this model. The project compared feed-forward neural networks (FNNs) to recurrent networks, with one of the RNN implementations being the gated recurrent unit, and that aimed to solve the vanishing gradient problem, which was being encountered. The models each took sequential weather data and used it to predict future data points, in order to make clean, more consistent synthetic data for other models to draw on.
 
-Another project we looked into was an RNN-based weather prediction task that would classify images based on non-exclusive weather states \citep{zhao2019cnnrnnarchitecturemultilabelweather}. They used self-annotated data, and their model would return a list of probabilities that each state was occurring. This algorithm initially was based on a single variable classifier, but the paper quickly concludes that a non-exclusive multi-class algorithm is the most efficient and accurate way to label outputs. This makes sense, as often a lot of weather conditions overlap, so reducing to just ‘wind’ or ‘rain’ is reductive, and can cause loss of information.
+Another project we looked into was an RNN-based weather prediction task that would classify images based on non-exclusive weather states \citep{zhao2019cnnrnnarchitecturemultilabelweather}. They used self-annotated data, and their model would return a list of probabilities that each state was occurring. This model initially was based on a single variable classifier, but the paper found that a non-exclusive multi-class algorithm was the most efficient and accurate way to label outputs. This makes intuitive sense, as weather conditions often overlap, and reducing them causes significant loss of information.
 
-Finally we looked into a report comparing numerical and machine learning-based weather prediction models. The article concluded that machine learning was much faster and more efficient to run, but couldn’t handle extreme points on the data nearly as well as numerical models, resulting in harsher weather conditions being poorly handled \citep{WAQAS2025306}. This is helpful for error analysis, as it could explain poor performance on the dataset, should it arise.
+Finally we had a look into a report comparing numerical and machine learning-based weather prediction models. The article concluded that machine learning was much faster and more efficient to run, but couldn’t handle extreme points on the data nearly as well as numerical models, resulting in harsher weather conditions being poorly handled \citep{WAQAS2025306}. This is helpful for error analysis, as it could explain poor performance on the dataset, should it arise.
 
 \section{Dataset} % DONE
 
-Our dataset is a large sample of public domain weather data taken from the Government of Canada’s website through a provided Bash script. The dataset consists of measurements taken roughly every 3 hours, ranging from June 11$^{th}$, 2013, to September 26$^{th}$, 2025. The exact time between measurements is highly irregular, resulting in inconsistent amounts of labels on a day-to-day basis. Additionally, the table is full of null values, and many empty or extraneous columns, including two that were completely unlabelled.
+Our dataset is a large sample of public domain weather data taken from the Government of Canada’s website through a provided Bash script. The dataset consists of measurements taken roughly every 3 hours, ranging from June 11$^{th}$, 2013, to September 26$^{th}$, 2025. The exact time between measurements is highly irregular, resulting in inconsistent amounts of labels on a day-to-day basis. Additionally, the table is full of null values, and many empty or extraneous columns, including two that were completely unlabeled, one of which being the crucial and highly predictive precipitation amount.
 
 Due to the frequency and time range of recordings, our dataset has ~107,000 data points, which means we can afford to drop invalid or incomplete points.
 
 \subsection{Labels} % DONE
 
-The table is provided as a .csv file, with built-in labels for each point, classifying what weather conditions were currently unfolding at the given time. These labels are grouped together and treat different magnitudes of the same weather as different prefix labels, for example “Mostly Cloudy” and “Paritally Cloudy” are treated as separate cases. We want to combine these umbrella terms by adding a discrete numeric method of indicating the scale of each weather event. This will allow us to add similar such labels back into the output during postprocessing, while using the magnitude of the even in this way to potentially discover more patterns about the dataset itself.
+The table is provided as a .csv file, with built-in labels for each point, classifying what weather conditions were currently unfolding at the given time. These labels are grouped together and treat different magnitudes of the same weather as different prefix labels, for example “Mostly Cloudy” and "Partially Cloudy” are treated as separate cases. It can potentially be highly beneficial  to combine these similar labels by implementing a discrete numeric method of indicating the scale of each weather event. This would eliminate the issue of having mutually exclusive labels appear together (sunny and overcast, for example), while also potentially discovering more patterns about the dataset itself.
 
 \subsection{Preprocessing} % DONE
 
-For our preprocessing, we removed missing or redundant values from the dataset. Since we only requested data from a station outside of Toronto’s Pearson International Airport, which means that all the location and station data columns are identical, so we can remove those. There was a large amount of mostly empty flag columns and the humidex was missing most of its values, we removed all of those features.
+In preprocessing, missing/redundant values were removed from the dataset. Since this model is designed to predict weather labels for a specific non-changing location, features such as the latitude and longitude are constant and irrelevant. For example, the raw weather data included some station-designated flags for certain values (indicating that certain values were estimated or missing), and a humidex column, but these were largely empty and the entire columns were dropped.
 
-For the date and time information, we want to parse it manually to work with our recurrent neural network. We added in a delta time column, recording the time in hours since the last measurement, and parsed the day and month integer values into sinusoidal functions.
-
-Lastly, we take our labels and split them into a list of each characteristic, then we group the labels into label classes, and convert the prefix labels into real valued magnitudes representing the scale of the labeled weather event. Finally we export the processed data into a separate file for later splitting into training and test sets.
+Lastly, each label set (comma-separated) was split into individual labels, all unique labels were identified, and a column was created for each unique label. If a label belonged to a datapoint, its column was filled with a 1, while the rest were filled with zeroes. The final transformed dataset was then used for later splitting.
 
 \section{Features} % DONE
 
 The features of our processed dataset include:
 \begin{itemize}[nosep]
-        \item Date Information (Day, Month and Year)
-        \item Time (LST)
+        \item Temp (°C)
+        \item Dew Point Temp (°C)
+        \item Wind Chill
         \item Wind Speed (km/h)
         \item Wind Direction (10s of degrees)
         \item Air Pressure (kPa)
@@ -124,17 +123,74 @@ The features of our processed dataset include:
         \item Precipitation Amount (mm)
 \end{itemize}
 
-Our input values contain all of this information, as we have filtered out any columns missing any values. These features were manually determined by human inspection of the dataset.
+Our input values contain all of this information, as we have filtered out any columns missing any values. These features were selected by manual inspection, choosing the most complete columns.
 
-We engineered the date and time features to have more readable numeric values to be more compatible with our RNN. We added in a delta time column, recording the time in hours since the last measurement, and parsed the day and month integer values into sinusoidal functions.
+We engineered the date and time features to have more readable numeric values to be more compatible with our RNN. We added in a delta time column, corresponding to the time in hours since the last measurement. Additionally, due to the periodic nature of the hours in a day and the days in a year (days 1 and 364 are close together), these were converted into a sinusoidal representation with periods 24 and 365 respectively.
 
 \section{Implementation}
 
-Describe your model and implementation here. Refer to item 4. This may take around a page.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.7\textwidth]{Reg_Analysis.png}
+  \caption{Analysis of different regularization methods used on our model.
+  We looked at how the presence of L2 and dropout regularization affected the validation loss over training.
+  The vertical bars represent the optimal value of each loss plot, and the l2 optimal line has been shifted over for visibility,
+  but it is equal to the dropout layer line.}
+  \label{fig:experiments}
+\end{figure*}
+
+The working model is a recurrent neural network (RNN), implemented through PyTorch’s built-in RNN module. A (vanilla) RNN was selected because it’s the simplest version in the family of RNNs. Later experiments may test the performance of alternative options such as Long Short-Term Memory (LSTM) and Gated Recurrent Units (GRU) RNN types.
+
+The output of the RNN is followed by a fully connected layer mapping the final hidden layer to the output, which isn’t activated at this point. The input layer accepts 12 input features, an input sequence of 300, and a batch size of 32.
+
+All features are normalized through the per-feature mean and standard deviation, on the training and validation sets. The means and standard deviations were derived solely from the training data, and then applied to the validation data after. This was done to prevent data leakage since the validation set is meant to be treated as unseen data for which the per-feature means and standard deviations are unknown.
+
+A sequence length of 300 was chosen because on average, datapoints are 3 hours apart. However, this isn’t always the case. Some data points are 1 hour apart and some hundreds of hours apart. This extra padding helps ensure we have more data than what may have been necessary, which results in better or equally good predictions than with too little data.
+
+Since this is a multi-label classification problem, the final activations are eventually to be computed through the sigmoid function, not softmax. Additionally, there are 3 stacked RNN layers, 256 hidden neurons per layer, and some regularization (L2 and dropout) in place.
+
+The intended purpose of constructing a deeper learning model with 3 stacked layers is so that the model learns both short and long term patterns. By extension, the intended purpose of having 256 neurons per hidden layer is so that the model has the capacity to learn more complicated patterns, should they exist. In short, these decisions were made primarily to avoid prior beliefs about the complexity of the problem constraining the model’s peak learning capacity.
+
+For regularization, we analysed how the model performs with and without both L2 regularization and dropout, based on the validation loss, accuracy, recall, precision, and the F1 score, of the different models. As shown in Figure~\ref{fig:experiments}, L2 regularization has the largest impact on the stability of the validation loss, but applying both methods resulted in the smoothest line across all methods.
+
+
+
+The loss function module used was PyTorch’s \verb|BCEWithLogitsLoss|, which combines binary cross entropy loss with the sigmoid function, and takes advantage of a mathematical simplification to provide better numerical stability. The sigmoid implied with this loss function is the reason why the neural network doesn’t have an activation at the end. When calculating validation loss, the sigmoid of the final linear layer is calculated manually.
+Lastly, because this is a multi-label classification problem with 27 possibilities and at most 3 labels per instance, the target set is dominated by zeroes. The \verb|BCEWithLogitsLoss| loss function provided by PyTorch allows you to specify a ‘pos\_weight’ parameter which allows you to increase the loss of false negatives by adding weights for each of the targets (27 weights in this case). These weights were set to be the inverse of the frequency of each label, making rarer labels, such as “Thunderstorms” (target 27), more costly to miss.
 
 \section{Results and Evaluation}
 
-How are you evaluating your model? What results do you have so far? What are your baselines? Refer to item 5. This may take around 0.5 pages.
+\begin{table*}
+  \centering
+  \begin{tabular}{lllll}
+    \hline
+    \textbf{Method}           & \textbf{Accuracy}       & \textbf{Recall}       & \textbf{Precision}       & \textbf{F1 Score} \\
+    \hline
+    Model (RNN)          &           84.49\%         &           77.12\%         &           16.96\%         &           27.81\% \\
+    Baseline (All Zeros) &           96.12\%         &           0.00\%          &           0.00\%          &           0.00\% \\
+    Baseline (All Ones)  &           3.87\%          &           100.0\%         &           3.87\%          &           7.45\% \\
+    Baseline (MV)        &           94.63\%         &           28.57\%         &           29.88\%         &           29.20\% \\
+    CNN-LSTM \citep{zhao2019cnnrnnarchitecturemultilabelweather}          & – & 87.39\% & 74.58\% & 80.48\% \\
+    CNN-Att-ConvLSTM \citep{zhao2019cnnrnnarchitecturemultilabelweather}          & – & 84.72\% & 86.43\% & 85.57\% \\
+
+    \hline
+  \end{tabular}
+  \caption{\label{tab:results}
+    Evaluation metrics on the validation set.
+  }
+\end{table*}
+
+
+We performed a comparison of accuracy, recall, precision, and F1 score between the model and some rough baselines for our multivariate classification. The baselines we chose were:
+\begin{itemize}[nosep]
+    \item \textbf{All-Zero Baseline:} Always predicts absence (0) for every weather event.
+    \item \textbf{All-One Baseline:} Always predicts presence (1) for every weather event.
+    \item \textbf{Majority Vote Baseline:} Always predicts 1 for the most common class(es) and 0 for others.
+\end{itemize}
+
+From our metrics in \ref{tab:results}, we conclude that while our RNN model outperforms the naive baselines in recall and F1 score, it still struggles with precision, indicating a high rate of false positives. However, the high accuracy indicates a good amount of true positives and true negatives, which both indicate that this is a good start. Further tuning and data augmentation may be necessary to improve performance.
+
+Additionally, we analysed how the model performs against the baselines from a similar RNN classification model \citep{zhao2019cnnrnnarchitecturemultilabelweather}. The two we chose were a standard RNN with a long short-term memory (LSTM), and another iteration of this RNN that includes an attention mechanism, allowing it to prioritize different sequences.This model is also used for non-exclusive multi-class classification, with the only difference being the features, which are analysed images of current weather conditions, rather than matrices of data. From our analysis in \ref{tab:results}, we show that our model is not particularly accurate compared to these two implementations, which is in part due to the poor false negative score.
 
 \section{Feedback and Plans}
 
@@ -142,6 +198,9 @@ The TA agreed that our RNN is a viable approach to this problem and checked the 
 
 We have identified these areas for improvement in the next phase of the project: model, amount of data and quality of data. We plan to try new models such as transformers, since our current RNN was running into some issues due to the sparsity of the output set. We also plan to collect larger and more reliable data from alternative sources, since we've found that the current dataset has many missing values and possible human errors.
 
+
+
+% removed so the document parses cleanly
 \iffalse
 \section{Template Notes}
 
@@ -152,16 +211,6 @@ You can remove this section or comment it out, as it only contains instructions 
 See Table~\ref{citation-guide} for an example of a table and its caption.
 See Figure~\ref{fig:experiments} for an example of a figure and its caption.
 
-
-% removed so the document parses
-
-\begin{figure}[t]
-  \includegraphics[width=\columnwidth]{example-image-golden}
-  \caption{A figure with a caption that runs for more than one line.
-    Example image is usually available through the \texttt{mwe} package
-    without even mentioning it in the preamble.}
-  \label{fig:experiments}
-\end{figure}
 
 
 \begin{figure*}[t]
@@ -174,6 +223,8 @@ See Figure~\ref{fig:experiments} for an example of a figure and its caption.
 
 
 \subsection{Citations}
+
+
 
 \begin{table*}
   \centering
@@ -223,12 +274,31 @@ This an example cross-reference to Equation~\ref{eq:example}. You can also write
 
 \section*{Team Contributions}
 
-Write in this section a few sentences describing the contributions of each team member. What did each member work on? Refer to item 7.
+\textbf{Ahmed Rashrash:}
+\begin{itemize}[nosep]
+    \item Initial plan
+    \item Pre-processing and feature engineering
+    \item Model implementation, partial hyperparameter tuning
+    \item Reviewed spelling, grammar, wording, accuracy/correctness for this document
+\end{itemize}
+\textbf{Jamie Easterbrook:}
+\begin{itemize}[nosep]
+    \item Report sections 1,2,3,4 and contributions to 5,6
+    \item \LaTeX  formatting
+    \item Analysis of mean-squared error and contributions to accuracy and additional analysis metrics
+    \item Research on past works for comparison
+\end{itemize}
+\textbf{David Zhong:}
+\begin{itemize}[nosep]
+    \item Contributed to all sections of the report
+    \item Additional hyperparameter experimentation
+\end{itemize}
+
 
 % Bibliography entries for the entire Anthology, followed by custom entries
 %\bibliography{custom,anthology-overleaf-1,anthology-overleaf-2}
 
-\bibliographystyle{plain}
+%\bibliographystyle{plain}
 
 % Custom bibliography entries only
 \bibliography{custom}
