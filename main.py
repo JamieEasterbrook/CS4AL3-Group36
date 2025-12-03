@@ -220,10 +220,10 @@ def lr_lambda(current_step: int):
 ## Train
 LEARNING_RATE = 1e-04
 BATCH_SIZE = 256
-SEQUENCE_LENGTH = 150
-NUM_EPOCHS = 25
-HIDDEN_SIZE = 256
-NUM_LAYERS = 3
+SEQUENCE_LENGTH = 300
+NUM_EPOCHS = 50
+HIDDEN_SIZE = 512
+NUM_LAYERS = 6
 
 NUM_HEADS = 16
 ## Regularize
@@ -231,8 +231,8 @@ DROPOUT_RATE = 0.1
 L2_LAMBDA = 1e-03
 
 ## Early Stop
-PATIENCE = 5
-THRESHOLD = 1e-03
+PATIENCE = 10
+THRESHOLD = 1e-04
 
 # Configuration
 EVALUATION_MODE = False
@@ -469,6 +469,7 @@ if __name__ == '__main__':
         best_loss = float('inf')
         best_model_state = None
         num_no_improve = 0
+        losses = []
 
         for epoch in range(NUM_EPOCHS):
             start_time = time.time()
@@ -489,7 +490,9 @@ if __name__ == '__main__':
                 iteration += 1
 
             current_loss = calculate_validation_loss(model, val_dataset, criterion)
-            if current_loss - best_loss <= THRESHOLD:
+            train_loss = calculate_validation_loss(model, train_dataset, criterion)
+            losses.append(current_loss)
+            if current_loss - best_loss >= THRESHOLD:
                 num_no_improve += 1
                 if num_no_improve >= PATIENCE:
                     break
@@ -500,9 +503,12 @@ if __name__ == '__main__':
                     best_model_state = copy.deepcopy(model.state_dict())
             end_time = time.time()
             elapsed_time = end_time - start_time
-            print(f"Epoch {epoch+1:3} | Loss: {current_loss:.4f}, Learning Rate: {scheduler.get_last_lr()[0]:.6f}, No Improvement Count: {num_no_improve}, Time Elapsed: {elapsed_time:.3f}s")
+            print(f"Epoch {epoch+1:3} | Val Loss: {current_loss:.4f}, Train Loss: {train_loss:.4f}, Learning Rate: {scheduler.get_last_lr()[0]:.6f}, No Improvement Count: {num_no_improve}, Time Elapsed: {elapsed_time:.3f}s")
 
+        early_stop = 'due to early stop'
+        finished = ''
+        print(f'training complete {early_stop if num_no_improve >= PATIENCE else finished}')
+        print("saving transformer model...")
         torch.save(best_model_state, TRANSFORMER_PATH)
-
-
+        print(losses)
 
