@@ -11,8 +11,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader
 
+# transformer functions
+from torch.optim.lr_scheduler import LambdaLR
+import time
+
 # ###################################################### MODEL ######################################################
 
+# RNN model implementation
 class RecurrentNeuralNetwork(nn.Module):
     def __init__(
             self,
@@ -63,6 +68,37 @@ class SequencedDataset(Dataset):
         return self.X[idx:idx+self.seq_len], self.y[idx+self.seq_len]
 
 
+
+# Transformer model implementation
+class Transformer(nn.Module):
+    def __init__(
+            self,
+            input_dim,
+            model_dim,
+            num_heads,
+            num_layers,
+            output_dim,
+            dropout=0.25    ):
+        super(Transformer, self).__init__()
+        self.embedding = nn.Linear(input_dim, model_dim)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model = model_dim,
+            nhead = num_heads,
+            dim_feedforward = 4*model_dim,  # can be changed, but 4x was recommended
+            dropout = dropout,
+            batch_first=True,   # silences warning
+            activation="relu")
+        self.transformer = nn.TransformerEncoder(encoder_layer = encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(model_dim, output_dim)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = self.transformer(x)
+        x = x[:, -1, :]
+        x = self.fc(x)
+        return x
+
+
 # ################################################## MAIN HELPERS ###################################################
 
 def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion):
@@ -78,7 +114,7 @@ def calculate_validation_loss(model: nn.Module, val: SequencedDataset, criterion
         model.train()
     return total_loss / len(val_loader)
 
-def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset) -> torch.Tensor:
+def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset, threshold = 0.5) -> torch.Tensor:
     model.eval()
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     preds = []
@@ -88,7 +124,7 @@ def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset) -> tor
 
     model.train()
 
-    return (torch.cat(preds) >= 0.5).float()
+    return (torch.cat(preds) >= threshold).float()
 
 # acc, recall, tpr
 def calculate_results(y_pred: torch.Tensor, y: torch.Tensor):
@@ -144,32 +180,68 @@ def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
     print(f'Model recall: {model_recall*100:.8f}%')
     print(f'Model precision: {model_prec*100:.8f}%')
     print(f'Model F1 score: {2 * (model_prec*model_recall)/(model_prec+model_recall + 1e-4) :.8f} ')
-    
 
+
+
+def multilabel_metrics(y_pred: torch.Tensor, y: torch.Tensor):
+    acc = 0
+    for pred_row, true_row in zip(y_pred, y):
+        if torch.equal(pred_row, true_row):
+            acc += 1
+    return acc/len(y_pred)
+
+
+def batch_decode(preds: torch.Tensor, columns: list[str]):
+    decoded = []
+    for row in preds:
+        decode = []
+        labels = [col for col, bit in zip(columns, row.tolist()) if bit == 1]
+        for label in labels:
+            c = SIMPLE_MAPPING[label]
+            if c not in decode:
+                decode.append(c)
+        decoded.append(decode)
+    return decoded
+
+
+# allow for variable learning rate
+def lr_lambda(current_step: int):
+    total_steps = NUM_EPOCHS * TRAIN_LENGTH
+    warmup_steps = int(total_steps * 0.1)
+    if current_step < warmup_steps:
+        return float(current_step) / float(max(1, warmup_steps))
+    return max(
+        0.0, float(total_steps - current_step) / float(max(1, total_steps - warmup_steps))
+    )
 
 # ###################################################### MAIN ######################################################
 
 # Hyperparameters
 ## Train
-LEARNING_RATE = 0.0001
-BATCH_SIZE = 32
-SEQUENCE_LENGTH = 300
-NUM_EPOCHS = 9001
+LEARNING_RATE = 1e-04
+BATCH_SIZE = 256
+SEQUENCE_LENGTH = 150
+NUM_EPOCHS = 25
 HIDDEN_SIZE = 256
 NUM_LAYERS = 3
+
+NUM_HEADS = 16
 ## Regularize
-DROPOUT_RATE = 0.3
+DROPOUT_RATE = 0.1
 L2_LAMBDA = 1e-03
 
 ## Early Stop
-PATIENCE = 20
-THRESHOLD = 0.01
+PATIENCE = 5
+THRESHOLD = 1e-03
 
 # Configuration
-EVALUATION_MODE = True
+EVALUATION_MODE = False
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+TRAIN_RNN = False
+TRAIN_TRANSFORMER = not TRAIN_RNN
 ### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
 MODEL_PATH = 'model/rnn_model.pt'
+TRANSFORMER_PATH = 'model/transformer_model.pt'
 
 # Constants
 TARGET_COLUMNS = [
@@ -217,79 +289,220 @@ FEATURE_COLUMNS = [
         "year",
     ]
 
+
+# these columns remove redundant feature names.
+SIMPLE_COLUMNS = [
+    "Snow",
+    "Clear",
+    "Cloudy",
+    "Hail",
+    "Drizzle",
+    "Fog",
+    "Rain",
+    "Haze",
+    "Thunder"
+]
+
+SIMPLE_MAPPING = {
+    "Blowing Snow": "Snow",
+    "Clear": "Clear",
+    "Cloudy": "Cloudy",
+    "Drizzle": "Drizzle",
+    "Fog": "Fog",
+    "Freezing Drizzle": "Drizzle",
+    "Freezing Fog": "Fog",
+    "Freezing Rain": "Rain",
+    "Haze": "Haze",
+    "Heavy Rain": "Rain",
+    "Heavy Rain Showers": "Rain",
+    "Heavy Snow": "Snow",
+    "Ice Pellets": "Hail",
+    "Mainly Clear": "Clear",
+    "Moderate Hail": "Hail",
+    "Moderate Rain": "Rain",
+    "Moderate Rain Showers": "Rain",
+    "Moderate Snow": "Snow",
+    "Mostly Cloudy": "Cloudy",
+    "Rain": "Rain",
+    "Rain Showers": "Rain",
+    "Smoke": "Haze",
+    "Snow": "Snow",
+    "Snow Grains": "Snow",
+    "Snow Pellets": "Snow",
+    "Snow Showers": "Snow",
+    "Thunderstorms": "Thunder"
+}
+
 if __name__ == '__main__':
     print('loading data...')
     df = pd.read_csv('processed_data/final.csv')
     scalar = StandardScaler()
     X = df[FEATURE_COLUMNS].to_numpy()
     y = df[TARGET_COLUMNS].to_numpy()
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
+    X_main, X_test, y_main, y_test = train_test_split(X, y, test_size=0.1, shuffle=False)
+    X_train, X_val, y_train, y_val = train_test_split(X_main, y_main, test_size=0.1, shuffle=False)
     X_train = scalar.fit_transform(X_train)
     X_val = scalar.transform(X_val)
 
     X_train = torch.Tensor(X_train).to(DEVICE)
     X_val = torch.Tensor(X_val).to(DEVICE)
+    X_test = torch.Tensor(X_test).to(DEVICE)
     y_train = torch.Tensor(y_train).to(DEVICE)
     y_val = torch.Tensor(y_val).to(DEVICE)
+    y_test = torch.Tensor(y_test).to(DEVICE)
 
-    train_dataset, val_dataset = SequencedDataset(X_train, y_train, SEQUENCE_LENGTH), SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
+    train_dataset = SequencedDataset(X_train, y_train, SEQUENCE_LENGTH)
+    val_dataset = SequencedDataset(X_val, y_val, SEQUENCE_LENGTH)
+    test_dataset = SequencedDataset(X_test, y_test, SEQUENCE_LENGTH)
 
-    print(f"Training Data:\n\tX:\n\t{train_dataset.X}\n\ty:\n\t{train_dataset.y}")
+    print(f"training Data:\n\tX:\n\t{train_dataset.X}\n\ty:\n\t{train_dataset.y}")
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    
-    print('instantiating model...')
-    
-    model = RecurrentNeuralNetwork(
-        input_size=len(FEATURE_COLUMNS),
-        hidden_size=HIDDEN_SIZE,
-        num_layers=NUM_LAYERS,
-        output_size=len(TARGET_COLUMNS),
-        device=DEVICE
-    ).to(DEVICE)
+
+    TRAIN_LENGTH = len(train_loader)
+
+    if TRAIN_RNN:
+        print('instantiating rnn model...')
+        model = RecurrentNeuralNetwork(
+            input_size=len(FEATURE_COLUMNS),
+            hidden_size=HIDDEN_SIZE,
+            num_layers=NUM_LAYERS,
+            output_size=len(TARGET_COLUMNS),
+            device=DEVICE
+        ).to(DEVICE)
+    elif TRAIN_TRANSFORMER:
+        print('instantiating transformer model...')
+        model = Transformer(
+            input_dim = len(FEATURE_COLUMNS),
+            model_dim = HIDDEN_SIZE,
+            num_heads = NUM_HEADS,
+            num_layers = NUM_LAYERS,
+            output_dim = len(TARGET_COLUMNS)    )
+
+
+
     if EVALUATION_MODE:
+        print('loading model...')
         model.load_state_dict(torch.load(MODEL_PATH,map_location=torch.device(DEVICE)))
         model = model.to(DEVICE)
-        print_evaluation_metrics(model, val_dataset)
+        model.eval()
+        #print_evaluation_metrics(model, val_dataset)
+
+        print('calculating accuracy...')
+        #print(calculate_prediction(model, X_val))
+        print(y_train[3])
+        preds = calculate_prediction(model, test_dataset, 0.50)
+        print(preds[3])
+
+
+        pred_simple = batch_decode(preds, TARGET_COLUMNS)
+        class_simple = batch_decode(y_test, TARGET_COLUMNS)
+        total = 0
+        for pred, label in zip(pred_simple, class_simple):
+            for c in pred:
+                if c in label:
+                    total += 1/len(c)
+        total = total/len(pred_simple)
+        print(f"Class Accuracy: {total * 100.:2f}%")
+
+
+        print(f"Total Identical Classifications: {multilabel_metrics(preds, y_test) * 100.:2f}%")
+
+        print(pred_simple)
+        print(class_simple)
+
         quit(0)
+    if TRAIN_RNN:
+        model.train()
+        pos_weight = (y_train.size(0)) / (y_train.sum(dim=0) + 1e-6) # prefers positive predictions, should be inversely proportional to how rare the class is
+        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(pos_weight)).to(DEVICE)
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_LAMBDA)
 
-    model.train()
-    pos_weight = (y_train.size(0)) / (y_train.sum(dim=0) + 1e-6) # prefers positive predictions, should be inversely proportional to how rare the class is
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(pos_weight)).to(DEVICE) 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_LAMBDA)
-    
-    print('starting training...')
-    print(f'Max number of iterations: {len(train_loader) * NUM_EPOCHS}')
-    iteration = 0
-    best_loss = float('inf')
-    best_model_state = None
-    num_no_improve = 0
-    for epoch in range(NUM_EPOCHS):
-        for X_batch, y_batch in train_loader:
-            inputs = X_batch.to(DEVICE)
-            targets = y_batch.to(DEVICE)
+        print('starting rnn model training...')
+        print(f'Max number of iterations: {len(train_loader) * NUM_EPOCHS}')
+        iteration = 0
+        best_loss = float('inf')
+        best_model_state = None
+        num_no_improve = 0
+        for epoch in range(NUM_EPOCHS):
+            for X_batch, y_batch in train_loader:
+                inputs = X_batch.to(DEVICE)
+                targets = y_batch.to(DEVICE)
 
-            optimizer.zero_grad()
-            preds = model(inputs)
+                optimizer.zero_grad()
+                preds = model(inputs)
 
-            loss = criterion(preds, targets)
-            loss.backward()
-            optimizer.step()
+                loss = criterion(preds, targets)
+                loss.backward()
+                optimizer.step()
 
-            iteration += 1
+                iteration += 1
 
-        current_loss = calculate_validation_loss(model, val_dataset, criterion)
-        if current_loss - best_loss >= THRESHOLD:
-            num_no_improve += 1
-            if num_no_improve >= PATIENCE:
-                break
-        else:
-            num_no_improve = 0
-            if best_loss > current_loss:
-                best_loss = current_loss
-                best_model_state = copy.deepcopy(model.state_dict())
-        print(f"Iteration {iteration}, Loss: {current_loss}, No Improvement Count: {num_no_improve}")
+            current_loss = calculate_validation_loss(model, val_dataset, criterion)
+            if current_loss - best_loss >= THRESHOLD:
+                num_no_improve += 1
+                if num_no_improve >= PATIENCE:
+                    break
+            else:
+                num_no_improve = 0
+                if best_loss > current_loss:
+                    best_loss = current_loss
+                    best_model_state = copy.deepcopy(model.state_dict())
+            print(f"Iteration {iteration}, Loss: {current_loss}, No Improvement Count: {num_no_improve}")
             
+        early_stop = 'due to early stop'
+        finished = ''
+        print(f'training complete {early_stop if num_no_improve >= PATIENCE else finished}')
 
-    print(f'training complete {'due to early stop' if num_no_improve >= PATIENCE else ''}')
+        torch.save(best_model_state, MODEL_PATH)
 
-    torch.save(best_model_state, MODEL_PATH)
+    if TRAIN_TRANSFORMER:
+        model.train()
+        pos_weight = (y_train.size(0)) / (y_train.sum(
+            dim=0) + 1e-6)  # prefers positive predictions, should be inversely proportional to how rare the class is
+        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(pos_weight)).to(DEVICE)
+        optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_LAMBDA)   # uses decoupled weight decay, better for regularizaion
+        print('starting transformer model training...')
+
+        scheduler = LambdaLR(optimizer, lr_lambda)
+
+        iteration = 0
+        best_loss = float('inf')
+        best_model_state = None
+        num_no_improve = 0
+
+        for epoch in range(NUM_EPOCHS):
+            start_time = time.time()
+            for X_batch, y_batch in train_loader:
+                inputs = X_batch.to(DEVICE)
+                targets = y_batch.to(DEVICE)
+
+                optimizer.zero_grad()
+                preds = model(inputs)
+
+                loss = criterion(preds, targets)
+                loss.backward()
+
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)    # stabilizes training gradients
+                optimizer.step()
+                scheduler.step()    # updates learning rate dynamically
+
+                iteration += 1
+
+            current_loss = calculate_validation_loss(model, val_dataset, criterion)
+            if current_loss - best_loss <= THRESHOLD:
+                num_no_improve += 1
+                if num_no_improve >= PATIENCE:
+                    break
+            else:
+                num_no_improve = 0
+                if best_loss > current_loss:
+                    best_loss = current_loss
+                    best_model_state = copy.deepcopy(model.state_dict())
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"Epoch {epoch+1:3} | Loss: {current_loss:.4f}, Learning Rate: {scheduler.get_last_lr()[0]:.6f}, No Improvement Count: {num_no_improve}, Time Elapsed: {elapsed_time:.3f}s")
+
+        torch.save(best_model_state, TRANSFORMER_PATH)
+
+
+
