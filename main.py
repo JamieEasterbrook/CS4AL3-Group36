@@ -222,8 +222,8 @@ LEARNING_RATE = 1e-04
 BATCH_SIZE = 256
 SEQUENCE_LENGTH = 300
 NUM_EPOCHS = 50
-HIDDEN_SIZE = 512
-NUM_LAYERS = 6
+HIDDEN_SIZE = 256
+NUM_LAYERS = 4
 
 NUM_HEADS = 16
 ## Regularize
@@ -235,7 +235,7 @@ PATIENCE = 10
 THRESHOLD = 1e-04
 
 # Configuration
-EVALUATION_MODE = False
+EVALUATION_MODE = True
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 TRAIN_RNN = False
 TRAIN_TRANSFORMER = not TRAIN_RNN
@@ -376,13 +376,14 @@ if __name__ == '__main__':
             model_dim = HIDDEN_SIZE,
             num_heads = NUM_HEADS,
             num_layers = NUM_LAYERS,
-            output_dim = len(TARGET_COLUMNS)    )
+            output_dim = len(TARGET_COLUMNS)
+        ).to(DEVICE)
 
 
 
     if EVALUATION_MODE:
         print('loading model...')
-        model.load_state_dict(torch.load(MODEL_PATH,map_location=torch.device(DEVICE)))
+        model.load_state_dict(torch.load(MODEL_PATH if TRAIN_RNN else TRANSFORMER_PATH,map_location=torch.device(DEVICE)))
         model = model.to(DEVICE)
         model.eval()
         #print_evaluation_metrics(model, val_dataset)
