@@ -118,10 +118,10 @@ def calculate_prediction(model: nn.Module, val_dataset: SequencedDataset, thresh
     model.eval()
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     preds = []
+    labels = []
     with torch.no_grad():
-        for X_batch, _ in val_loader:
+        for X_batch,_ in val_loader:
             preds.append(torch.sigmoid(model(X_batch.to(DEVICE)))) # manually apply sigmoid since loss function does it now, loss isnt calculated here
-
     model.train()
 
     return (torch.cat(preds) >= threshold).float()
@@ -182,14 +182,12 @@ def print_evaluation_metrics(model:nn.Module, val:SequencedDataset):
     print(f'Model F1 score: {2 * (model_prec*model_recall)/(model_prec+model_recall + 1e-4) :.8f} ')
 
 
-
-def multilabel_metrics(y_pred: torch.Tensor, y: torch.Tensor):
+def multilabel_metrics(y_pred, y_true):
     acc = 0
-    for pred_row, true_row in zip(y_pred, y):
+    for pred_row, true_row in zip(y_pred, y_true):
         if torch.equal(pred_row, true_row):
             acc += 1
     return acc/len(y_pred)
-
 
 def batch_decode(preds: torch.Tensor, columns: list[str]):
     decoded = []
@@ -214,34 +212,32 @@ def lr_lambda(current_step: int):
         0.0, float(total_steps - current_step) / float(max(1, total_steps - warmup_steps))
     )
 
+def simplify_data (y):
+    new_y = np.zeros((len(y), len(SIMPLE_COLUMNS)))
+
+    for i in range(len(y)):
+        for j in range(len(y[i])):
+            if y[i, j] == 1:
+                new_col = SIMPLE_MAPPING[TARGET_COLUMNS[j]]
+                q = SIMPLE_COLUMNS.index(new_col)
+                new_y[i, q] = 1
+    return new_y
+
+
 # ###################################################### MAIN ######################################################
 
-# Hyperparameters
-## Train
-LEARNING_RATE = 1e-04
-BATCH_SIZE = 256
-SEQUENCE_LENGTH = 300
-NUM_EPOCHS = 50
-HIDDEN_SIZE = 256
-NUM_LAYERS = 4
-
-NUM_HEADS = 16
-## Regularize
-DROPOUT_RATE = 0.1
-L2_LAMBDA = 1e-03
-
-## Early Stop
-PATIENCE = 10
-THRESHOLD = 1e-04
-
 # Configuration
-EVALUATION_MODE = True
+EVALUATION_MODE = False
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-TRAIN_RNN = False
+TRAIN_RNN = True
 TRAIN_TRANSFORMER = not TRAIN_RNN
+SIMPLE = False
 ### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
 MODEL_PATH = 'model/rnn_model.pt'
 TRANSFORMER_PATH = 'model/transformer_model.pt'
+
+SIMPLE_MODEL_PATH = 'model/simple_rnn_model.pt'
+SIMPLE_TRANSFORMER_PATH = 'model/simple_transformer_model.pt'
 
 # Constants
 TARGET_COLUMNS = [
@@ -334,11 +330,53 @@ SIMPLE_MAPPING = {
 }
 
 if __name__ == '__main__':
+
+    # Set relative hyperparams
+    if TRAIN_RNN:
+        ## RNN HYPERPARAMS
+        LEARNING_RATE = 1e-04
+        BATCH_SIZE = 256
+        SEQUENCE_LENGTH = 300
+        NUM_EPOCHS = 100
+        HIDDEN_SIZE = 256
+        NUM_LAYERS = 3
+
+        NUM_HEADS = 16
+        ## Regularize
+        DROPOUT_RATE = 0.1
+        L2_LAMBDA = 1e-03
+
+        ## Early Stop
+        PATIENCE = 10
+        THRESHOLD = 1e-04
+    else:
+        ## TRANSFORMER HYPERPARAMS
+        LEARNING_RATE = 1e-04
+        BATCH_SIZE = 256
+        SEQUENCE_LENGTH = 300
+        NUM_EPOCHS = 50
+        HIDDEN_SIZE = 256
+        NUM_LAYERS = 4
+
+        NUM_HEADS = 8
+        ## Regularize
+        DROPOUT_RATE = 0.1
+        L2_LAMBDA = 1e-03
+
+        ## Early Stop
+        PATIENCE = 3
+        THRESHOLD = 1e-04
+
     print('loading data...')
     df = pd.read_csv('processed_data/final.csv')
     scalar = StandardScaler()
     X = df[FEATURE_COLUMNS].to_numpy()
     y = df[TARGET_COLUMNS].to_numpy()
+
+    # converts output to 9-class vector
+    if SIMPLE:
+        y = simplify_data(y)
+
     X_main, X_test, y_main, y_test = train_test_split(X, y, test_size=0.1, shuffle=False)
     X_train, X_val, y_train, y_val = train_test_split(X_main, y_main, test_size=0.1, shuffle=False)
     X_train = scalar.fit_transform(X_train)
@@ -366,7 +404,7 @@ if __name__ == '__main__':
             input_size=len(FEATURE_COLUMNS),
             hidden_size=HIDDEN_SIZE,
             num_layers=NUM_LAYERS,
-            output_size=len(TARGET_COLUMNS),
+            output_size=len(y[0]),
             device=DEVICE
         ).to(DEVICE)
     elif TRAIN_TRANSFORMER:
@@ -376,23 +414,35 @@ if __name__ == '__main__':
             model_dim = HIDDEN_SIZE,
             num_heads = NUM_HEADS,
             num_layers = NUM_LAYERS,
-            output_dim = len(TARGET_COLUMNS)
-        ).to(DEVICE)
+            output_dim = len(y[0])    )
 
 
 
     if EVALUATION_MODE:
-        print('loading model...')
-        model.load_state_dict(torch.load(MODEL_PATH if TRAIN_RNN else TRANSFORMER_PATH,map_location=torch.device(DEVICE)))
+        if TRAIN_RNN:
+            if not SIMPLE:
+                print('loading rnn model...')
+                model.load_state_dict(torch.load(MODEL_PATH,map_location=torch.device(DEVICE)))
+            else:
+                print('loading simple rnn model...')
+                model.load_state_dict(torch.load(SIMPLE_MODEL_PATH, map_location=torch.device(DEVICE)))
+        else:
+            if not SIMPLE:
+                print('loading transformer model...')
+                model.load_state_dict(torch.load(TRANSFORMER_PATH, map_location=torch.device(DEVICE)))
+            else:
+                print('loading simple transformer model...')
+                model.load_state_dict(torch.load(SIMPLE_TRANSFORMER_PATH, map_location=torch.device(DEVICE)))
         model = model.to(DEVICE)
         model.eval()
-        #print_evaluation_metrics(model, val_dataset)
+        print_evaluation_metrics(model, val_dataset)
 
         print('calculating accuracy...')
         #print(calculate_prediction(model, X_val))
-        print(y_train[3])
+        #print(y_train[3])
+
         preds = calculate_prediction(model, test_dataset, 0.50)
-        print(preds[3])
+        #print(preds[3])
 
 
         pred_simple = batch_decode(preds, TARGET_COLUMNS)
@@ -401,15 +451,14 @@ if __name__ == '__main__':
         for pred, label in zip(pred_simple, class_simple):
             for c in pred:
                 if c in label:
-                    total += 1/len(c)
+                    total += 1/len(label)
         total = total/len(pred_simple)
         print(f"Class Accuracy: {total * 100.:2f}%")
 
-
-        print(f"Total Identical Classifications: {multilabel_metrics(preds, y_test) * 100.:2f}%")
-
-        print(pred_simple)
-        print(class_simple)
+        #print(f"Total Identical Classifications: {multilabel_metrics(preds, y_test) * 100.:2f}%")
+        print(y_test)
+        #print(pred_simple)
+        #print(class_simple)
 
         quit(0)
     if TRAIN_RNN:
@@ -424,7 +473,9 @@ if __name__ == '__main__':
         best_loss = float('inf')
         best_model_state = None
         num_no_improve = 0
+        losses = []
         for epoch in range(NUM_EPOCHS):
+            start_time = time.time()
             for X_batch, y_batch in train_loader:
                 inputs = X_batch.to(DEVICE)
                 targets = y_batch.to(DEVICE)
@@ -439,6 +490,7 @@ if __name__ == '__main__':
                 iteration += 1
 
             current_loss = calculate_validation_loss(model, val_dataset, criterion)
+            losses.append(current_loss)
             if current_loss - best_loss >= THRESHOLD:
                 num_no_improve += 1
                 if num_no_improve >= PATIENCE:
@@ -448,14 +500,18 @@ if __name__ == '__main__':
                 if best_loss > current_loss:
                     best_loss = current_loss
                     best_model_state = copy.deepcopy(model.state_dict())
-            print(f"Iteration {iteration}, Loss: {current_loss}, No Improvement Count: {num_no_improve}")
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"Epoch {epoch}, Loss: {current_loss}, No Improvement Count: {num_no_improve}, Time Elapsed: {elapsed_time}")
             
         early_stop = 'due to early stop'
         finished = ''
         print(f'training complete {early_stop if num_no_improve >= PATIENCE else finished}')
-
-        torch.save(best_model_state, MODEL_PATH)
-
+        if SIMPLE:
+            torch.save(best_model_state, SIMPLE_MODEL_PATH)
+        else:
+            torch.save(best_model_state, MODEL_PATH)
+        print(losses)
     if TRAIN_TRANSFORMER:
         model.train()
         pos_weight = (y_train.size(0)) / (y_train.sum(
@@ -510,6 +566,10 @@ if __name__ == '__main__':
         finished = ''
         print(f'training complete {early_stop if num_no_improve >= PATIENCE else finished}')
         print("saving transformer model...")
-        torch.save(best_model_state, TRANSFORMER_PATH)
+
+        if SIMPLE:
+            torch.save(best_model_state, SIMPLE_TRANSFORMER_PATH)
+        else:
+            torch.save(best_model_state, TRANSFORMER_PATH)
         print(losses)
 
