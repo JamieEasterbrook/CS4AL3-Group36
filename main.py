@@ -227,11 +227,11 @@ def simplify_data (y):
 # ###################################################### MAIN ######################################################
 
 # Configuration
-EVALUATION_MODE = False
+EVALUATION_MODE = True
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-TRAIN_RNN = True
+TRAIN_RNN = False
 TRAIN_TRANSFORMER = not TRAIN_RNN
-SIMPLE = False
+SIMPLE = True
 ### Used as a source path in evaluation mode and as a destination path in training mode, should be used to manage multiple models if needed
 MODEL_PATH = 'model/rnn_model.pt'
 TRANSFORMER_PATH = 'model/transformer_model.pt'
@@ -355,10 +355,10 @@ if __name__ == '__main__':
         BATCH_SIZE = 256
         SEQUENCE_LENGTH = 300
         NUM_EPOCHS = 50
-        HIDDEN_SIZE = 256
-        NUM_LAYERS = 4
+        HIDDEN_SIZE = 128
+        NUM_LAYERS = 3
 
-        NUM_HEADS = 8
+        NUM_HEADS = 4
         ## Regularize
         DROPOUT_RATE = 0.1
         L2_LAMBDA = 1e-03

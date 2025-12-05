@@ -55,9 +55,9 @@ def display_regularization_graphs():
     plt.axvline(simple_rnn_loss.index(min(simple_rnn_loss)), color='purple', linestyle='-', linewidth=2)
     plt.axvline(transformer_loss.index(min(transformer_loss)), color='blue', linestyle='-', linewidth=2)
     plt.axvline(simple_transformer_loss.index(min(simple_transformer_loss)), color='red', linestyle='-', linewidth=2)
-    plt.title('Comparizon of Validation Loss for RNN and Transformer Implementations')
+    plt.title('Comparison of Validation Loss for RNN and Transformer Implementations')
     plt.legend()
-    plt.xlim(0,11)
+    plt.xlim(0,10)
     plt.savefig("report/Loss_Analysis.png", bbox_inches='tight')
     #plt.show()
 
